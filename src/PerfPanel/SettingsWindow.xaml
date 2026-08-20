@@ -1,0 +1,116 @@
+<Window x:Class="PerfPanel.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PerfPanel 设置" Width="470" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="#0A0F1E" FontFamily="Microsoft YaHei UI" Topmost="True">
+
+    <Window.Resources>
+        <Style x:Key="BtnStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1E3A5F"/>
+            <Setter Property="Foreground" Value="#E8EFFC"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CheckStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#C9D6EE"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,8,0,0"/>
+        </Style>
+        <Style x:Key="LabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#8FA3C8"/>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="18">
+
+        <!-- ============ 天气 ============ -->
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="天气" Style="{StaticResource SectionTitleStyle}"/>
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtCity" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                    <Button x:Name="btnSetCity" Grid.Column="1" Content="设置" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                    <Button x:Name="btnAutoCity" Grid.Column="2" Content="自动定位" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+                <TextBlock x:Name="lblCityStatus" Text="当前位置:…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0"/>
+
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="刷新周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbRefresh" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0"
+                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
+                        <ComboBoxItem Content="10 分钟" Tag="10"/>
+                        <ComboBoxItem Content="15 分钟" Tag="15"/>
+                        <ComboBoxItem Content="30 分钟" Tag="30"/>
+                        <ComboBoxItem Content="60 分钟" Tag="60"/>
+                    </ComboBox>
+                </Grid>
+                <CheckBox x:Name="chkShowWeather" Content="显示天气卡片" Style="{StaticResource CheckStyle}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ============ 界面 ============ -->
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="界面" Style="{StaticResource SectionTitleStyle}"/>
+                <Grid Margin="0,10,0,0">
+                    <TextBlock Text="界面缩放" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblScale" Text="100%" Style="{StaticResource LabelStyle}"
+                               HorizontalAlignment="Right" FontFamily="Consolas"/>
+                </Grid>
+                <Slider x:Name="sldScale" Minimum="0.8" Maximum="1.3" LargeChange="0.05" SmallChange="0.05"
+                        TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
+                <CheckBox x:Name="chkShowHint" Content="显示操作提示(拖动/方向键/S 设置/Esc 退出)" Style="{StaticResource CheckStyle}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ============ 开机自启 ============ -->
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="开机自启" Style="{StaticResource SectionTitleStyle}"/>
+                <Grid Margin="0,10,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="btnAutoOn" Content="开启" Style="{StaticResource BtnStyle}"/>
+                        <Button x:Name="btnAutoOff" Content="关闭" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock x:Name="lblAutoStatus" Text="…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Button x:Name="btnClose" Content="关 闭" Style="{StaticResource BtnStyle}" Margin="0,6,0,8"
+                Background="#24506E"/>
+
+    </StackPanel>
+</Window>

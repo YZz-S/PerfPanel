@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
+using PerfPanel.Services;
 
 namespace PerfPanel.Services;
 
@@ -10,13 +11,13 @@ public sealed record WeatherInfo(
     double UvIndex, string UvLevel,
     int? Aqi, string AqiLevel);
 
-/// <summary>Open-Meteo 免费天气(无需 key);位置可自定义,IP 自动定位结果缓存到 exe 旁 weather.json。</summary>
+/// <summary>Open-Meteo 免费天气(无需 key)。定位链:手动城市 → 缓存 → IP(ipapi→ipwho.is 备用)→ 坐标反查城市名。</summary>
 public sealed class WeatherService
 {
-    public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(30);
+    private const double FallbackLat = 39.9042, FallbackLon = 116.4074; // 全部失败时的兜底:北京
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(6) };
-    private string _configPath = "";
+    private readonly string _configPath = Path.Combine(AppContext.BaseDirectory, "weather.json");
 
     /// <summary>下次刷新时间(UTC),UI 据此显示倒计时。</summary>
     public DateTime NextRefreshUtc { get; private set; } = DateTime.UtcNow + RefreshInterval;
@@ -24,11 +25,12 @@ public sealed class WeatherService
     public WeatherInfo? Current { get; private set; }
     public bool Available => Current != null;
 
+    public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(Math.Clamp(Config.Current.WeatherRefreshMinutes, 10, 120));
+
     public async Task<WeatherInfo?> FetchAsync()
     {
         try
         {
-            _configPath = Path.Combine(AppContext.BaseDirectory, "weather.json");
             (double lat, double lon, string city) = await ResolveLocationAsync();
 
             var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
@@ -46,7 +48,6 @@ public sealed class WeatherService
             double tmax = root.GetProperty("daily").GetProperty("temperature_2m_max")[0].GetDouble();
             double tmin = root.GetProperty("daily").GetProperty("temperature_2m_min")[0].GetDouble();
 
-            // 空气质量独立接口,失败仅隐藏该项
             (int? aqi, string aqiLevel) = await FetchAirQualityAsync(lat, lon);
 
             Current = new WeatherInfo(temp, WmoDescription(code), tmax, tmin, city,
@@ -60,12 +61,11 @@ public sealed class WeatherService
         }
     }
 
-    /// <summary>自定义城市:Open-Meteo 免费地理编码,写入 weather.json 并立即刷新。</summary>
+    /// <summary>自定义城市:Open-Meteo 免费地理编码,写 weather.json + config.City 并立即刷新。</summary>
     public async Task<(bool Ok, string Msg)> SetCityAsync(string name)
     {
         try
         {
-            _configPath = Path.Combine(AppContext.BaseDirectory, "weather.json");
             var url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
                       Uri.EscapeDataString(name) + "&count=1&language=zh";
             using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
@@ -81,9 +81,11 @@ public sealed class WeatherService
 
             await File.WriteAllTextAsync(_configPath,
                 JsonSerializer.Serialize(new { lat, lon, city }));
+            Config.Current.City = city;
+            Config.Save();
             var w = await FetchAsync();
             return w != null
-                ? (true, $"✓ 天气位置已设置:{city}\n({lat:F2}, {lon:F2})\n当前 {w.TempC:F0}° {w.Desc}")
+                ? (true, $"✓ 天气位置已设置:{city}\n当前 {w.TempC:F0}° {w.Desc}")
                 : (true, $"✓ 位置已保存:{city}\n(天气数据获取中,稍后自动显示)");
         }
         catch (Exception ex)
@@ -92,40 +94,126 @@ public sealed class WeatherService
         }
     }
 
+    /// <summary>恢复自动定位:清除手动城市与坐标缓存,立即重新定位。</summary>
+    public async Task ResetToAutoAsync()
+    {
+        Config.Current.City = "";
+        Config.Save();
+        try { File.Delete(_configPath); } catch { }
+        await FetchAsync();
+    }
+
+    // ---------- 定位链 ----------
+
     private async Task<(double lat, double lon, string city)> ResolveLocationAsync()
     {
+        string manual = Config.Current.City.Trim();
+
         if (File.Exists(_configPath))
         {
             try
             {
                 using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(_configPath));
                 var r = doc.RootElement;
-                return (r.GetProperty("lat").GetDouble(), r.GetProperty("lon").GetDouble(),
-                        r.GetProperty("city").GetString() ?? "");
+                double lat = r.GetProperty("lat").GetDouble();
+                double lon = r.GetProperty("lon").GetDouble();
+                string city = r.GetProperty("city").GetString() ?? "";
+
+                if (!string.IsNullOrEmpty(manual))
+                    return (lat, lon, manual);
+
+                // 城市为空 = 坐标可能来自失败兜底,不可信,重新 IP 定位
+                if (!string.IsNullOrEmpty(city))
+                {
+                    // 纯 ASCII 城市名(如 "Beijing")反查中文名并回写缓存
+                    if (city.All(c => c < 128))
+                    {
+                        var zh = await ReverseGeocodeAsync(lat, lon);
+                        if (!string.IsNullOrEmpty(zh))
+                        {
+                            city = zh;
+                            try
+                            {
+                                await File.WriteAllTextAsync(_configPath,
+                                    JsonSerializer.Serialize(new { lat, lon, city }));
+                            }
+                            catch { }
+                        }
+                    }
+                    return (lat, lon, city);
+                }
             }
             catch { }
         }
 
-        double lat = 39.9042, lon = 116.4074; // 兜底:北京
-        string city = "";
+        var (lat2, lon2, city2) = await IpLocateAsync();
+        // 反查中文名:IP 服务常返回英文(如 "Beijing"),反查统一本地化
+        var zhName = await ReverseGeocodeAsync(lat2, lon2);
+        if (!string.IsNullOrEmpty(zhName)) city2 = zhName;
+        if (string.IsNullOrEmpty(city2))
+            city2 = IsFallback(lat2, lon2) ? "北京" : ""; // 兜底坐标标明,避免"本地"
+
+        if (!string.IsNullOrEmpty(city2))
+        {
+            try
+            {
+                await File.WriteAllTextAsync(_configPath,
+                    JsonSerializer.Serialize(new { lat = lat2, lon = lon2, city = city2 }));
+            }
+            catch { }
+        }
+        return (lat2, lon2, city2);
+    }
+
+    /// <summary>IP 定位:ipapi.co → ipwho.is 备用 → 北京兜底。</summary>
+    private async Task<(double lat, double lon, string city)> IpLocateAsync()
+    {
         try
         {
             using var doc = JsonDocument.Parse(await _http.GetStringAsync("https://ipapi.co/json/"));
             var r = doc.RootElement;
-            if (r.TryGetProperty("latitude", out var la)) lat = la.GetDouble();
-            if (r.TryGetProperty("longitude", out var lo)) lon = lo.GetDouble();
-            if (r.TryGetProperty("city", out var c)) city = c.GetString() ?? "";
+            if (r.TryGetProperty("latitude", out var la) && r.TryGetProperty("longitude", out var lo))
+            {
+                string city = r.TryGetProperty("city", out var c) ? c.GetString() ?? "" : "";
+                return (la.GetDouble(), lo.GetDouble(), city);
+            }
         }
         catch { }
 
         try
         {
-            await File.WriteAllTextAsync(_configPath,
-                JsonSerializer.Serialize(new { lat, lon, city }));
+            using var doc = JsonDocument.Parse(await _http.GetStringAsync("https://ipwho.is/"));
+            var r = doc.RootElement;
+            if (r.TryGetProperty("latitude", out var la) && r.TryGetProperty("longitude", out var lo))
+            {
+                string city = r.TryGetProperty("city", out var c) ? c.GetString() ?? "" : "";
+                return (la.GetDouble(), lo.GetDouble(), city);
+            }
         }
         catch { }
-        return (lat, lon, city);
+
+        return (FallbackLat, FallbackLon, "");
     }
+
+    /// <summary>坐标反查城市名(BigDataCloud 免费),中文返回。</summary>
+    private async Task<string> ReverseGeocodeAsync(double lat, double lon)
+    {
+        try
+        {
+            var url = $"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat:F4}&longitude={lon:F4}&localityLanguage=zh";
+            using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
+            var r = doc.RootElement;
+            if (r.TryGetProperty("city", out var c) && c.GetString() is { Length: > 0 } city)
+                return city;
+            if (r.TryGetProperty("locality", out var l) && l.GetString() is { Length: > 0 } loc)
+                return loc;
+        }
+        catch { }
+        return "";
+    }
+
+    private static bool IsFallback(double lat, double lon) =>
+        Math.Abs(lat - FallbackLat) < 0.001 && Math.Abs(lon - FallbackLon) < 0.001;
 
     /// <summary>空气质量(us_aqi):失败返回 null,面板隐藏该项。</summary>
     private async Task<(int? aqi, string level)> FetchAirQualityAsync(double lat, double lon)

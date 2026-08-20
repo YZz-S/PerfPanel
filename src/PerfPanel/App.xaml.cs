@@ -8,6 +8,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        Config.Load();
 
         if (e.Args.Length > 0 && HandleCli(e.Args))
         {

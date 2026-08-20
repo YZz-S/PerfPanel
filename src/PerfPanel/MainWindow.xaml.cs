@@ -24,6 +24,10 @@ public partial class MainWindow : Window
     private readonly bool _windowed;
     private bool _sampling;
     private IntPtr _hwnd;
+    private SettingsWindow? _settings;
+
+    /// <summary>设置窗口访问面板内部的天气服务。</summary>
+    public WeatherService Weather => _weather;
 
     public MainWindow()
     {
@@ -39,6 +43,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyWindowMode();
+        ApplyConfig();
 
         // 后台初始化 LHM(内核驱动 + 传感器探测,约 1s)
         Task.Run(() =>
@@ -72,7 +77,24 @@ public partial class MainWindow : Window
         Height = 1920;
         Topmost = true; // 盖住任务栏
         ShowInTaskbar = false;
-        txtHint.Text = "拖动顶部移动 · 方向键微调 · Ctrl+方向键调整大小 · F 复位 · Esc 退出";
+        txtHint.Text = "拖动顶部移动 · 方向键微调 · Ctrl+方向键调整大小 · F 复位 · S 设置 · Esc 退出";
+    }
+
+    /// <summary>应用 config.json 中的显示相关项(设置窗口改动后即时调用)。</summary>
+    public void ApplyConfig()
+    {
+        var c = Config.Current;
+        txtHint.Visibility = c.ShowHint ? Visibility.Visible : Visibility.Collapsed;
+        if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
+        ApplyScale(c.Scale);
+    }
+
+    /// <summary>缩放:设计画布按 1/s 缩小,Viewbox 等比放大内容铺满屏幕。</summary>
+    public void ApplyScale(double s)
+    {
+        s = Math.Clamp(s, 0.8, 1.3);
+        layoutRoot.Width = 440 / s;
+        layoutRoot.Height = 1920 / s;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -109,6 +131,12 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape)
         {
             Close();
+            return;
+        }
+
+        if (e.Key == Key.S)
+        {
+            OpenSettings();
             return;
         }
 
@@ -150,6 +178,19 @@ public partial class MainWindow : Window
         {
             DragMove();
         }
+    }
+
+    private void Gear_OnClick(object sender, MouseButtonEventArgs e) => OpenSettings();
+
+    private void OpenSettings()
+    {
+        if (_settings is { IsLoaded: true })
+        {
+            _settings.Activate();
+            return;
+        }
+        _settings = new SettingsWindow(this) { Owner = this };
+        _settings.Show();
     }
 
     private async Task TickAsync()
@@ -240,6 +281,11 @@ public partial class MainWindow : Window
 
     private void UpdateWeather()
     {
+        if (!Config.Current.ShowWeather)
+        {
+            cardWeather.Visibility = Visibility.Collapsed;
+            return;
+        }
         var w = _weather.Current;
         if (w == null) return;
         cardWeather.Visibility = Visibility.Visible;

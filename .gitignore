@@ -8,3 +8,6 @@
 # 用户本地配置与生成的可执行文件
 dist/PerfPanel.exe
 dist/weather.json
+
+# 用户本地配置
+dist/config.json
