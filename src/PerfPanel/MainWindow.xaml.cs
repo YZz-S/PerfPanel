@@ -246,7 +246,10 @@ public partial class MainWindow : Window
         txtWeatherTemp.Text = $"{w.TempC:F0}°";
         txtWeatherDesc.Text = w.Desc;
         txtWeatherRange.Text = $"H {w.TMax:F0}°  L {w.TMin:F0}°";
-        txtWeatherCity.Text = string.IsNullOrEmpty(w.City) ? "" : w.City;
+
+        string loc = string.IsNullOrEmpty(w.City) ? "本地" : w.City;
+        int remain = (int)Math.Ceiling((_weather.NextRefreshUtc - DateTime.UtcNow).TotalMinutes);
+        txtWeatherCity.Text = remain > 0 ? $"{loc} · {remain}分钟后刷新" : $"{loc} · 刷新中…";
     }
 
     private async Task WeatherLoopAsync()
@@ -256,7 +259,7 @@ public partial class MainWindow : Window
             var w = await _weather.FetchAsync();
             if (w != null && IsLoaded)
                 await Dispatcher.InvokeAsync(UpdateWeather);
-            await Task.Delay(TimeSpan.FromMinutes(30));
+            await Task.Delay(WeatherService.RefreshInterval);
         }
     }
 
