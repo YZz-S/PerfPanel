@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>PerfPanel 副屏监控面板开机自启(管理员权限,完整传感器)</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <AllowHardTerminate>false</AllowHardTerminate>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>C:\Users\zyz\.zcode\workspace\default\perf-panel\dist\PerfPanel.exe</Command>
+    </Exec>
+  </Actions>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+</Task>

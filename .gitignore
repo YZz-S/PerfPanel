@@ -1,0 +1,10 @@
+# 构建产物
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+
+# 用户本地配置与生成的可执行文件
+dist/PerfPanel.exe
+dist/weather.json
