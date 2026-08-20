@@ -4,7 +4,11 @@ using System.Text.Json;
 
 namespace PerfPanel.Services;
 
-public sealed record WeatherInfo(double TempC, string Desc, double TMax, double TMin, string City);
+public sealed record WeatherInfo(
+    double TempC, string Desc, double TMax, double TMin, string City,
+    int WindLevel, double WindSpeedKmh,
+    double UvIndex, string UvLevel,
+    int? Aqi, string AqiLevel);
 
 /// <summary>Open-Meteo 免费天气(无需 key);位置可自定义,IP 自动定位结果缓存到 exe 旁 weather.json。</summary>
 public sealed class WeatherService
@@ -28,16 +32,25 @@ public sealed class WeatherService
             (double lat, double lon, string city) = await ResolveLocationAsync();
 
             var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
-                      "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min" +
+                      "&current=temperature_2m,weather_code,wind_speed_10m" +
+                      "&hourly=uv_index&forecast_hours=1" +
+                      "&daily=temperature_2m_max,temperature_2m_min" +
                       "&timezone=auto&forecast_days=1";
             using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
             var root = doc.RootElement;
-            double temp = root.GetProperty("current").GetProperty("temperature_2m").GetDouble();
-            int code = root.GetProperty("current").GetProperty("weather_code").GetInt32();
+            var cur = root.GetProperty("current");
+            double temp = cur.GetProperty("temperature_2m").GetDouble();
+            int code = cur.GetProperty("weather_code").GetInt32();
+            double windKmh = cur.GetProperty("wind_speed_10m").GetDouble();
+            double uv = root.GetProperty("hourly").GetProperty("uv_index")[0].GetDouble();
             double tmax = root.GetProperty("daily").GetProperty("temperature_2m_max")[0].GetDouble();
             double tmin = root.GetProperty("daily").GetProperty("temperature_2m_min")[0].GetDouble();
 
-            Current = new WeatherInfo(temp, WmoDescription(code), tmax, tmin, city);
+            // 空气质量独立接口,失败仅隐藏该项
+            (int? aqi, string aqiLevel) = await FetchAirQualityAsync(lat, lon);
+
+            Current = new WeatherInfo(temp, WmoDescription(code), tmax, tmin, city,
+                Beaufort(windKmh), windKmh, uv, UvLevel(uv), aqi, aqiLevel);
             NextRefreshUtc = DateTime.UtcNow + RefreshInterval;
             return Current;
         }
@@ -113,6 +126,49 @@ public sealed class WeatherService
         catch { }
         return (lat, lon, city);
     }
+
+    /// <summary>空气质量(us_aqi):失败返回 null,面板隐藏该项。</summary>
+    private async Task<(int? aqi, string level)> FetchAirQualityAsync(double lat, double lon)
+    {
+        try
+        {
+            var url = $"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat:F4}&longitude={lon:F4}" +
+                      "&current=us_aqi&timezone=auto";
+            using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
+            int aqi = (int)Math.Round(doc.RootElement.GetProperty("current").GetProperty("us_aqi").GetDouble());
+            return (aqi, AqiLevel(aqi));
+        }
+        catch
+        {
+            return (null, "");
+        }
+    }
+
+    /// <summary>蒲福风级(风速 km/h → 0~12 级)。</summary>
+    private static int Beaufort(double kmh) => kmh switch
+    {
+        < 1 => 0, < 6 => 1, < 12 => 2, < 20 => 3, < 29 => 4, < 39 => 5,
+        < 50 => 6, < 62 => 7, < 75 => 8, < 89 => 9, < 103 => 10, < 118 => 11, _ => 12,
+    };
+
+    private static string UvLevel(double uv) => uv switch
+    {
+        < 3 => "弱",
+        < 6 => "中等",
+        < 8 => "强",
+        < 11 => "很强",
+        _ => "极强",
+    };
+
+    private static string AqiLevel(int aqi) => aqi switch
+    {
+        <= 50 => "优",
+        <= 100 => "良",
+        <= 150 => "轻度污染",
+        <= 200 => "中度污染",
+        <= 300 => "重度污染",
+        _ => "严重污染",
+    };
 
     private static string WmoDescription(int code) => code switch
     {

@@ -192,6 +192,7 @@
 
                     <!-- 天气 -->
                     <Border x:Name="cardWeather" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                        <StackPanel>
                         <Grid>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="txtWeatherTemp" Text="--°" FontSize="34" FontWeight="Bold"
@@ -206,6 +207,31 @@
                                            HorizontalAlignment="Right" Margin="0,3,0,0"/>
                             </StackPanel>
                         </Grid>
+
+                        <!-- 风 / 紫外线 / 空气质量 -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="风速" Style="{StaticResource RowLabelStyle}"/>
+                                <TextBlock x:Name="txtWind" Text="--" FontSize="15" FontWeight="Bold"
+                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="紫外线" Style="{StaticResource RowLabelStyle}"/>
+                                <TextBlock x:Name="txtUv" Text="--" FontSize="15" FontWeight="Bold"
+                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel x:Name="cellAqi" Grid.Column="2">
+                                <TextBlock Text="空气质量" Style="{StaticResource RowLabelStyle}"/>
+                                <TextBlock x:Name="txtAqi" Text="--" FontSize="15" FontWeight="Bold"
+                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                        </StackPanel>
                     </Border>
 
                 </StackPanel>

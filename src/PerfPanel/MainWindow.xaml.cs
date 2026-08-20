@@ -250,6 +250,24 @@ public partial class MainWindow : Window
         string loc = string.IsNullOrEmpty(w.City) ? "本地" : w.City;
         int remain = (int)Math.Ceiling((_weather.NextRefreshUtc - DateTime.UtcNow).TotalMinutes);
         txtWeatherCity.Text = remain > 0 ? $"{loc} · {remain}分钟后刷新" : $"{loc} · 刷新中…";
+
+        txtWind.Text = $"{w.WindLevel}级 {w.WindSpeedKmh:F0}km/h";
+        txtUv.Text = $"{w.UvIndex:F0} {w.UvLevel}";
+        if (w.Aqi is { } aqi)
+        {
+            cellAqi.Visibility = Visibility.Visible;
+            txtAqi.Text = $"{aqi} {w.AqiLevel}";
+            txtAqi.Foreground = aqi switch
+            {
+                <= 50 => new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99)),
+                <= 100 => new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24)),
+                _ => new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)),
+            };
+        }
+        else
+        {
+            cellAqi.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async Task WeatherLoopAsync()
