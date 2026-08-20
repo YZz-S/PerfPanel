@@ -23,29 +23,33 @@ PerfPanel.exe --windowed # 调试模式:主屏窗口化,可随意缩放
 
 **要完整温度/风扇/功耗:右键"以管理员身份运行"**(LibreHardwareMonitor 需要 Ring0 驱动读 CPU 传感器;N 卡温度/显存无需管理员也可读)。
 
-## 开机自启
+## 开机自启(已内置,命令行一键管理)
 
-### 普通权限(无 CPU 温度)
-`Win+R` → `shell:startup` → 把 `PerfPanel.exe` 的快捷方式放进去。
-
-### 管理员权限(完整传感器,推荐)
-用任务计划程序建一个"登录时触发、使用最高权限运行"的任务指向 `PerfPanel.exe`,或导入以下 XML(改路径后):
-
-```xml
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
-  <Actions><Exec><Command>你的路径\PerfPanel.exe</Command></Exec></Actions>
-  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
-</Task>
+```
+PerfPanel.exe --autostart-on       # 开启:管理员运行→计划任务(最高权限,完整传感器)
+                                   #        普通权限→注册表 Run 键(基础模式)
+PerfPanel.exe --autostart-off      # 关闭(两种方式都会清理)
+PerfPanel.exe --autostart-status   # 查看当前注册状态
 ```
 
-## 天气定位
+最简单的方式:双击 `dist/` 里的现成脚本——
+- `开机自启-开启(管理员,推荐).bat`:弹一次 UAC,注册计划任务,开机后完整传感器直接可用
+- `开机自启-开启(普通权限).bat`:不弹 UAC,但开机后无 CPU 温度/功耗/风扇
+- `开机自启-关闭.bat`
 
-首次运行自动用 IP 定位并写入 exe 同目录 `weather.json`,想固定城市手动编辑:
+## 天气:位置自定义 + 刷新倒计时
+
+- 面板天气卡片实时显示「城市 · N分钟后刷新」,每 30 分钟自动刷新
+- 自定义城市(Open-Meteo 免费地理编码,支持中文/拼音/英文):
+
+```
+PerfPanel.exe --set-city 上海
+```
+
+或双击 `dist/设置天气城市.bat` 输入城市名;也可直接编辑 exe 旁 `weather.json`:
 
 ```json
-{"lat": 39.9042, "lon": 116.4074, "city": "北京"}
+{"lat": 31.2304, "lon": 121.4737, "city": "上海"}
 ```
 
 ## 构建
@@ -74,9 +78,12 @@ src/PerfPanel/
     ├── FallbackMonitorService.cs  # 免管理员降级:WMI 本地化安全性能类 + GlobalMemoryStatusEx
     ├── MonitorAggregator.cs       # 双源聚合,字段级互补
     ├── NetworkMonitorService.cs   # 网卡吞吐(粘性选卡)
-    ├── WeatherService.cs          # Open-Meteo + ipapi.co,失败静默
-    └── MonitorHelper.cs           # EnumDisplayMonitors P/Invoke(不引 WinForms)
+    ├── WeatherService.cs          # Open-Meteo + 地理编码,位置可自定义,失败静默
+    ├── AutostartService.cs        # 开机自启:计划任务/注册表双通道
+    └── MonitorHelper.cs           # EnumDisplayMonitors / SetWindowPos P/Invoke(不引 WinForms)
 ```
+
+改进需求(多传感器/外观自定义/横竖屏/待办等)的设计方案见 [docs/设计方案.md](docs/设计方案.md)。
 
 - 数据源:LibreHardwareMonitorLib 0.9.6(MIT)+ Windows WMI
 - 刷新:DispatcherTimer 1 秒,后台线程采样,UI 线程仅渲染
