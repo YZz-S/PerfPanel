@@ -290,7 +290,7 @@ public partial class MainWindow : Window
         if (w == null) return;
         cardWeather.Visibility = Visibility.Visible;
         txtWeatherTemp.Text = $"{w.TempC:F0}°";
-        txtWeatherDesc.Text = w.Desc;
+        txtWeatherDesc.Text = w.HumidityPct is { } h ? $"{w.Desc} · 湿度{h}%" : w.Desc;
         txtWeatherRange.Text = $"H {w.TMax:F0}°  L {w.TMin:F0}°";
 
         string loc = string.IsNullOrEmpty(w.City) ? "本地" : w.City;

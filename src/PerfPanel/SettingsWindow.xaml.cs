@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
         _main = main;
 
         var c = Config.Current;
+        txtAmapKey.Text = c.AmapKey;
         txtCity.Text = c.City;
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
@@ -24,6 +25,31 @@ public partial class SettingsWindow : Window
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
         lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
+
+        btnSaveKey.Click += async (_, _) =>
+        {
+            var key = txtAmapKey.Text.Trim();
+            if (key.Length == 0)
+            {
+                Config.Current.AmapKey = "";
+                Config.Save();
+                lblKeyStatus.Text = "已切换回 Open-Meteo 免费源";
+                await _main.Weather.FetchAsync();
+                return;
+            }
+
+            btnSaveKey.IsEnabled = false;
+            lblKeyStatus.Text = "正在测试 Key…";
+            var test = await _main.Weather.TestAmapKeyAsync(key);
+            if (test.Ok)
+            {
+                Config.Current.AmapKey = key;
+                Config.Save();
+                await _main.Weather.FetchAsync();
+            }
+            lblKeyStatus.Text = test.Msg;
+            btnSaveKey.IsEnabled = true;
+        };
 
         btnSetCity.Click += async (_, _) =>
         {
