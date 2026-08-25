@@ -14,6 +14,17 @@
 
 ## 运行
 
+### 从源码快速启动(开发调试)
+
+```bash
+dotnet run --project src/PerfPanel                # 全屏模式(首次自动还原依赖并编译)
+dotnet run --project src/PerfPanel -- --windowed  # 调试模式:主屏窗口化,无副屏时用
+```
+
+需 .NET SDK 8.0+(更高版本 SDK 亦可编译 net8.0 目标)。注意 `dotnet run` 是普通权限进程,右上角会显示 `BASIC`(无 CPU 温度/功耗/风扇);想看完整传感器,请用管理员终端执行,或先构建出 exe 再右键管理员运行。
+
+### 运行构建产物
+
 ```
 PerfPanel.exe            # 全屏模式:自动定位 440×1920 副屏(无边框铺满,Esc 退出)
 PerfPanel.exe --windowed # 调试模式:主屏窗口化,可随意缩放
@@ -65,6 +76,8 @@ dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
+
+> 仓库不含构建产物。`dist/` 下的 `.bat` 脚本在**脚本所在目录**查找 `PerfPanel.exe`,需把 publish 出的 exe 复制进 `dist/` 后再双击使用(开机自启/设置城市等命令行参数对 `dotnet run` 同样有效,写在 `--` 之后即可)。
 
 ## 架构
 
