@@ -98,6 +98,6 @@ src/PerfPanel/
 
 改进需求(多传感器/外观自定义/横竖屏/待办等)的设计方案见 [docs/设计方案.md](docs/设计方案.md)。
 
-- 数据源:LibreHardwareMonitorLib 0.9.6(MIT)+ Windows WMI
+- 数据源:LibreHardwareMonitorLib **0.9.4**(锁定勿升:0.9.5+ 在部分 AMD 笔记本如 5800H 上 CPU 传感器值恒 0;MIT)+ Windows WMI
 - 刷新:DispatcherTimer 1 秒,后台线程采样,UI 线程仅渲染
 - 实测占用:私有内存约 130MB、工作集约 190MB(WPF + LHM + WMI 常态水平,比浏览器方案省一半)
