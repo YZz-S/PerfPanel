@@ -39,16 +39,22 @@ public partial class SettingsWindow : Window
             }
 
             btnSaveKey.IsEnabled = false;
-            lblKeyStatus.Text = "正在测试 Key…";
-            var test = await _main.Weather.TestAmapKeyAsync(key);
-            if (test.Ok)
+            try
             {
-                Config.Current.AmapKey = key;
-                Config.Save();
-                await _main.Weather.FetchAsync();
+                lblKeyStatus.Text = "正在测试 Key…";
+                var test = await _main.Weather.TestAmapKeyAsync(key);
+                if (test.Ok)
+                {
+                    Config.Current.AmapKey = key;
+                    Config.Save();
+                    await _main.Weather.FetchAsync();
+                }
+                lblKeyStatus.Text = test.Msg;
+                // 弹框必须带 owner:主面板是 Topmost 全屏窗,无主消息框可能被压在其后形成隐形模态框
+                MessageBox.Show(this, test.Msg, "PerfPanel", MessageBoxButton.OK,
+                    test.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
-            lblKeyStatus.Text = test.Msg;
-            btnSaveKey.IsEnabled = true;
+            finally { btnSaveKey.IsEnabled = true; }
         };
 
         btnSetCity.Click += async (_, _) =>
@@ -56,19 +62,22 @@ public partial class SettingsWindow : Window
             var name = txtCity.Text.Trim();
             if (name.Length == 0) return;
             btnSetCity.IsEnabled = false;
-            var r = await _main.Weather.SetCityAsync(name);
-            txtCity.Text = Config.Current.City;
-            MessageBox.Show(r.Msg, "PerfPanel", MessageBoxButton.OK,
-                r.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
-            btnSetCity.IsEnabled = true;
+            try
+            {
+                var r = await _main.Weather.SetCityAsync(name);
+                txtCity.Text = Config.Current.City;
+                MessageBox.Show(this, r.Msg, "PerfPanel", MessageBoxButton.OK,
+                    r.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
+            }
+            finally { btnSetCity.IsEnabled = true; }
         };
 
         btnAutoCity.Click += async (_, _) =>
         {
             btnAutoCity.IsEnabled = false;
-            await _main.Weather.ResetToAutoAsync();
+            try { await _main.Weather.ResetToAutoAsync(); }
+            finally { btnAutoCity.IsEnabled = true; }
             txtCity.Text = "";
-            btnAutoCity.IsEnabled = true;
         };
 
         cmbRefresh.SelectionChanged += (_, _) =>
@@ -97,7 +106,7 @@ public partial class SettingsWindow : Window
         btnAutoOn.Click += (_, _) =>
         {
             var (ok, msg) = AutostartService.Enable();
-            MessageBox.Show(msg, "PerfPanel", MessageBoxButton.OK,
+            MessageBox.Show(this, msg, "PerfPanel", MessageBoxButton.OK,
                 ok ? MessageBoxImage.Information : MessageBoxImage.Error);
             lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
         };
