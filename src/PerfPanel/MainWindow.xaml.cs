@@ -222,7 +222,7 @@ public partial class MainWindow : Window
         txtFooter.Text = !full
             ? "SYSTEM MONITOR · BASIC(管理员可解锁温度)"
             : s.CpuTemp is null
-                ? "SYSTEM MONITOR · FULL · CPU温度不可用(多为内核隔离拦截)"
+                ? "SYSTEM MONITOR · FULL · CPU温度不可用"
                 : "SYSTEM MONITOR · FULL SENSORS";
 
         // ---- CPU ----
