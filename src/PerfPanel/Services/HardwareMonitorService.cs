@@ -112,14 +112,19 @@ public sealed class HardwareMonitorService : IDisposable
             break;
         }
 
-        // GPU 指标
-        foreach (var hw in _computer.Hardware)
+        // GPU 指标:双显卡(核显+独显)时优先选有温度传感器的独显,避免名称/占用取核显、温度取独显的混取
+        var gpu = _computer.Hardware
+            .Where(h => h.HardwareType is HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel)
+            .OrderByDescending(h => h.Sensors.Any(s => s.SensorType == SensorType.Temperature))
+            .ThenByDescending(h => h.HardwareType == HardwareType.GpuNvidia)
+            .FirstOrDefault();
+        if (gpu != null)
         {
-            if (hw.HardwareType is not (HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel)) continue;
-            _gpuLoad ??= Find(hw, SensorType.Load, ["GPU Core", "D3D 3D"]);
-            _gpuTemp ??= Find(hw, SensorType.Temperature, ["GPU Core", "GPU"]);
-            _gpuPower = Find(hw, SensorType.Power, ["Power", "Board Power", "GPU Power"]) ?? _gpuPower;
-            foreach (var s in hw.Sensors)
+            GpuName = gpu.Name;
+            _gpuLoad ??= Find(gpu, SensorType.Load, ["GPU Core", "D3D 3D"]);
+            _gpuTemp ??= Find(gpu, SensorType.Temperature, ["GPU Core", "GPU"]);
+            _gpuPower = Find(gpu, SensorType.Power, ["GPU Package", "Power", "Board Power", "GPU Power"]) ?? _gpuPower;
+            foreach (var s in gpu.Sensors)
             {
                 var n = s.Name.ToLowerInvariant();
                 if (s.SensorType is SensorType.Fan or SensorType.Control && n.Contains("fan"))
@@ -133,7 +138,6 @@ public sealed class HardwareMonitorService : IDisposable
                     if (n.Contains("total")) _gpuVramTotal ??= s;
                 }
             }
-            if (string.IsNullOrEmpty(GpuName)) GpuName = hw.Name;
         }
 
         // 内存总量:物理内存传感器(GB)

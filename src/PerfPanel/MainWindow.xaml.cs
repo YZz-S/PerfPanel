@@ -219,7 +219,11 @@ public partial class MainWindow : Window
         dotMode.Fill = full ? new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99))
                             : new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
         txtMode.Text = full ? "FULL" : "BASIC";
-        txtFooter.Text = full ? "SYSTEM MONITOR · FULL SENSORS" : "SYSTEM MONITOR · BASIC(管理员可解锁温度)";
+        txtFooter.Text = !full
+            ? "SYSTEM MONITOR · BASIC(管理员可解锁温度)"
+            : s.CpuTemp is null
+                ? "SYSTEM MONITOR · FULL · CPU温度不可用(多为内核隔离拦截)"
+                : "SYSTEM MONITOR · FULL SENSORS";
 
         // ---- CPU ----
         txtCpuName.Text = TrimModel(s.CpuName);
