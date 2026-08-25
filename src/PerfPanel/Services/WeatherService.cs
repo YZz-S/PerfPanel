@@ -175,7 +175,7 @@ public sealed class WeatherService
         if (manual.Length > 0)
         {
             var g = await AmapGeocodeAsync(manual);
-            if (g != null) return (g.Lat, g.Lon, g.City, g.Adcode);
+            if (g != null) return (g.Lat, g.Lon, g.City, g.Adcode ?? "");
         }
 
         try
