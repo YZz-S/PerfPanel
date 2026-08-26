@@ -11,3 +11,6 @@ dist/weather.json
 
 # 用户本地配置
 dist/config.json
+
+# 火山额度查询诊断落盘(exe 旁,含账户用量数据)
+volc-last-response.json
