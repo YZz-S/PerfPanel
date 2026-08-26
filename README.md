@@ -2,10 +2,14 @@
 
 为竖长条 USB-C 副屏(Windows 视频扩展屏)设计的暗色科技风硬件监控面板,WPF 原生实现。
 
+## 运行效果图
+
+![运行效果图](image/运行效果.png)
+
 ## 功能
 
 - **时钟区**:实时时间、日期星期、开机时长
-- **CPU**:占用率大数字 + 120 秒历史曲线、频率、温度、功耗、风扇转速
+- **CPU**:占用率大数字 + 120 秒历史曲线、频率、温度、功耗、风扇转速（目前风扇转速仅在台式机上实现该功能）
 - **GPU**:占用率 + 历史曲线、显存占用(带进度条)、温度、功耗、风扇
 - **内存**:占用百分比 + 已用/总量
 - **网络**:实时上/下行速度 + 下行历史曲线,自动选择活动网卡
@@ -45,6 +49,7 @@ PerfPanel.exe --autostart-status   # 查看当前注册状态
 ```
 
 最简单的方式:双击 `dist/` 里的现成脚本——
+
 - `开机自启-开启(管理员,推荐).bat`:弹一次 UAC,注册计划任务,开机后完整传感器直接可用
 - `开机自启-开启(普通权限).bat`:不弹 UAC,但开机后无 CPU 温度/功耗/风扇
 - `开机自启-关闭.bat`
@@ -69,7 +74,7 @@ PerfPanel.exe --set-city 上海
 面板新增 CODING PLAN 卡片,显示各订阅的剩余额度与重置倒计时(15 分钟自动刷新,失败保留上次成功值):
 
 | 供应商 | 查询方式 | 显示内容 |
-|---|---|---|
+| --- | --- | --- |
 | DeepSeek | 官方接口 `/user/balance` | 账户余额(¥) |
 | 智谱 GLM Coding Plan | 非官方接口(同 CC Switch) | 5h 窗/周窗剩余百分比 + 重置倒计时 |
 | 火山方舟 Agent/Coding Plan | 非官方控制面 OpenAPI(同 CC Switch) | 5h/周/月窗剩余额度 + 重置倒计时 |
@@ -94,6 +99,7 @@ dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile
 ```
 
 自包含版(免装运行时,约 150MB):
+
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
