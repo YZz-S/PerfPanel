@@ -1,8 +1,9 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace PerfPanel.Services;
 
-/// <summary>免管理员的基础数据源:内存 P/Invoke、CPU/GPU 走本地化安全的 WMI 格式化性能类。</summary>
+/// <summary>免管理员的基础数据源:CPU 占用走 PDH 计数器(与任务管理器同口径),内存 P/Invoke、其余走本地化安全的 WMI 格式化性能类。</summary>
 public sealed class FallbackMonitorService : IDisposable
 {
     private ulong _totalPhysMb;
@@ -10,6 +11,7 @@ public sealed class FallbackMonitorService : IDisposable
     private string _cpuName = "";
     private string _gpuName = "";
     private bool _wmiOk;
+    private PerformanceCounter? _cpuCounter;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MEMORYSTATUSEX
@@ -65,6 +67,19 @@ public sealed class FallbackMonitorService : IDisposable
         {
             _wmiOk = false; // WMI 异常时仅内存/网络可用
         }
+
+        // CPU 占用优先用 PDH 计数器:相邻两次 NextValue 之间做差分,口径与任务管理器一致,
+        // 且比每秒一次 WMI 查询便宜得多。首次调用只建立基线(返回 0),这里先预热。
+        try
+        {
+            _cpuCounter = new PerformanceCounter("Processor Information", "% Processor Time", "_Total", readOnly: true);
+            _cpuCounter.NextValue();
+        }
+        catch
+        {
+            _cpuCounter?.Dispose();
+            _cpuCounter = null; // 计数器库不可用时 GetCpuLoad 回退 WMI
+        }
     }
 
     public string CpuName => _cpuName;
@@ -78,8 +93,26 @@ public sealed class FallbackMonitorService : IDisposable
         return (ms.ullTotalPhys - ms.ullAvailPhys) / (1024f * 1024f * 1024f);
     }
 
-    /// <summary>CPU 总占用(%),使用本地化无关的 WMI 格式化性能类。</summary>
+    /// <summary>CPU 总占用(%):PDH 计数器差分(同任务管理器口径),不可用时回退本地化无关的 WMI 格式化类。</summary>
     public float? GetCpuLoad()
+    {
+        if (_cpuCounter != null)
+        {
+            try
+            {
+                // PDH 偶发返回 101%/-1% 之类的抖动值,夹回 0~100
+                return Math.Clamp(_cpuCounter.NextValue(), 0f, 100f);
+            }
+            catch
+            {
+                _cpuCounter.Dispose();
+                _cpuCounter = null; // 运行中失效则降级,后续走 WMI 路径
+            }
+        }
+        return GetCpuLoadByWmi();
+    }
+
+    private float? GetCpuLoadByWmi()
     {
         if (!_wmiOk) return null;
         try
@@ -150,5 +183,5 @@ public sealed class FallbackMonitorService : IDisposable
         return null;
     }
 
-    public void Dispose() { }
+    public void Dispose() => _cpuCounter?.Dispose();
 }
