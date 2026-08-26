@@ -237,6 +237,18 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Coding Plan 额度 -->
+                    <Border x:Name="cardCodingPlan" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
+                                <TextBlock x:Name="txtPlanRefresh" Text="" FontSize="10" Foreground="#55648A"
+                                           HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
+                            </Grid>
+                            <StackPanel x:Name="planRows" Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 

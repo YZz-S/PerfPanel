@@ -17,17 +17,22 @@ public partial class MainWindow : Window
 
     private readonly MonitorAggregator _agg = new();
     private readonly WeatherService _weather = new();
+    private readonly CodingPlanService _codingPlan = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly HistoryBuffer _cpuHist = new(HistoryCap);
     private readonly HistoryBuffer _gpuHist = new(HistoryCap);
     private readonly HistoryBuffer _netHist = new(HistoryCap);
     private readonly bool _windowed;
     private bool _sampling;
+    private int _lastPlanMinute = -1;
     private IntPtr _hwnd;
     private SettingsWindow? _settings;
 
     /// <summary>设置窗口访问面板内部的天气服务。</summary>
     public WeatherService Weather => _weather;
+
+    /// <summary>设置窗口访问面板内部的 Coding Plan 服务。</summary>
+    public CodingPlanService CodingPlan => _codingPlan;
 
     public MainWindow()
     {
@@ -54,6 +59,7 @@ public partial class MainWindow : Window
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
         _ = WeatherLoopAsync();
+        _ = CodingPlanLoopAsync();
     }
 
     /// <summary>全屏模式:窗口用 WPF 逻辑像素先摆个大概,句柄创建后再用物理像素精确贴屏。</summary>
@@ -86,6 +92,7 @@ public partial class MainWindow : Window
         var c = Config.Current;
         txtHint.Visibility = c.ShowHint ? Visibility.Visible : Visibility.Collapsed;
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
+        if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         ApplyScale(c.Scale);
     }
 
@@ -281,6 +288,13 @@ public partial class MainWindow : Window
 
         // ---- 天气 ----
         UpdateWeather();
+
+        // ---- Coding Plan(分钟级节流,重置倒计时按分钟走) ----
+        if (s.Time.Minute != _lastPlanMinute)
+        {
+            _lastPlanMinute = s.Time.Minute;
+            UpdateCodingPlan();
+        }
     }
 
     private void UpdateWeather()
@@ -330,6 +344,188 @@ public partial class MainWindow : Window
             await Task.Delay(WeatherService.RefreshInterval);
         }
     }
+
+    // ---------- Coding Plan 额度 ----------
+
+    private async Task CodingPlanLoopAsync()
+    {
+        // 启动稍等,避免与天气定位/LHM 初始化抢带宽
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        while (true)
+        {
+            await RefreshCodingPlanAsync();
+            await Task.Delay(CodingPlanService.RefreshInterval);
+        }
+    }
+
+    /// <summary>立即刷新全部 Coding Plan 额度并更新卡片(设置窗口保存密钥后也调用)。</summary>
+    public async Task RefreshCodingPlanAsync()
+    {
+        if (_codingPlan.AnyKeyConfigured)
+            await _codingPlan.FetchAllAsync();
+        if (IsLoaded)
+            await Dispatcher.InvokeAsync(UpdateCodingPlan);
+    }
+
+    private void UpdateCodingPlan()
+    {
+        var c = Config.Current;
+        if (!c.ShowCodingPlan || !_codingPlan.AnyKeyConfigured)
+        {
+            cardCodingPlan.Visibility = Visibility.Collapsed;
+            return;
+        }
+        cardCodingPlan.Visibility = Visibility.Visible;
+
+        if (_codingPlan.Current.Count == 0)
+        {
+            txtPlanRefresh.Text = "查询中…";
+            return;
+        }
+        int remain = (int)Math.Ceiling((_codingPlan.LastRefreshUtc + CodingPlanService.RefreshInterval - DateTime.UtcNow).TotalMinutes);
+        txtPlanRefresh.Text = remain > 0 ? $"{remain}分钟后刷新" : "刷新中…";
+
+        planRows.Children.Clear();
+        foreach (var p in _codingPlan.Current)
+            planRows.Children.Add(BuildPlanSection(p));
+    }
+
+    /// <summary>构建一个供应商区块:标题行(名称+主值) + 每限额窗口一行(标签/用量条/剩余/重置倒计时)。</summary>
+    private static StackPanel BuildPlanSection(PlanStatus p)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+
+        // ---- 标题行 ----
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        var title = new StackPanel();
+        var name = new TextBlock
+        {
+            Text = p.PlanName is { Length: > 0 } plan ? $"{p.Name} · {plan}" : p.Name,
+            FontSize = 13, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
+        };
+        title.Children.Add(name);
+        if (p.StaleError is { Length: > 0 })
+        {
+            title.Children.Add(new TextBlock
+            {
+                Text = "旧数据(上次刷新失败)", FontSize = 10, Foreground = BrushFromHex("#55648A"),
+            });
+        }
+        head.Children.Add(title);
+
+        if (!p.Ok)
+        {
+            head.Children.Add(new TextBlock
+            {
+                Text = "✗", FontSize = 15, FontWeight = FontWeights.Bold,
+                Foreground = BrushFromHex("#F87171"), HorizontalAlignment = HorizontalAlignment.Right,
+            });
+            panel.Children.Add(head);
+            panel.Children.Add(new TextBlock
+            {
+                Text = p.Error ?? "查询失败", FontSize = 11, Foreground = BrushFromHex("#F87171"),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
+            });
+            return panel;
+        }
+
+        // 主值取第一个窗口
+        var main = p.Windows.FirstOrDefault();
+        head.Children.Add(new TextBlock
+        {
+            Text = FormatPlanValue(main, p.Unit),
+            FontSize = 22, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
+            Foreground = PlanValueBrush(main), HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        panel.Children.Add(head);
+
+        // ---- 窗口行 ----
+        foreach (var w in p.Windows)
+        {
+            // 绝对值型(DeepSeek 余额)主值已展示,不再重复成行
+            if (w.UsedPercent is not { } used) continue;
+            var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            row.Children.Add(new TextBlock
+            {
+                Text = w.Label, FontSize = 11, Foreground = BrushFromHex("#55648A"),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            });
+
+            // 用量条(百分比型)
+            {
+                var track = new Border
+                {
+                    Height = 4, CornerRadius = new CornerRadius(2), ClipToBounds = true,
+                    Background = BrushFromHex("#1B2743"), VerticalAlignment = VerticalAlignment.Center,
+                };
+                var fill = new Border
+                {
+                    CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left,
+                    Background = PlanValueBrush(w), Width = 0,
+                };
+                track.SizeChanged += (_, e) => fill.Width = Math.Clamp(used / 100.0, 0, 1) * e.NewSize.Width;
+                track.Child = fill;
+                Grid.SetColumn(track, 1);
+                row.Children.Add(track);
+            }
+
+            var value = new TextBlock
+            {
+                Text = FormatPlanValue(w, p.Unit, withReset: true),
+                FontSize = 12, FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#8FA3C8"),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+            };
+            Grid.SetColumn(value, 2);
+            row.Children.Add(value);
+
+            panel.Children.Add(row);
+        }
+        return panel;
+    }
+
+    /// <summary>窗口值文本:百分比型"剩87% · 2.5小时后重置";绝对值型"110.2 点"/"¥110.20"。</summary>
+    private static string FormatPlanValue(QuotaWindow? w, string? unit, bool withReset = false)
+    {
+        if (w == null) return "--";
+        if (w.RemainingValue is { } abs)
+            return unit == "CNY" ? $"¥{abs:0.00}"
+                 : unit is { Length: > 0 } u ? $"{abs:0.##} {u}"
+                 : $"{abs:0.##}";
+        double remain = 100 - (w.UsedPercent ?? 0);
+        string reset = withReset ? FormatResetIn(w.ResetUtc) : "";
+        return reset.Length > 0 ? $"剩{remain:F0}% {reset}" : $"剩{remain:F0}%";
+    }
+
+    /// <summary>重置倒计时(相对时间,分钟起)。</summary>
+    private static string FormatResetIn(DateTime? resetUtc)
+    {
+        if (resetUtc == null) return "";
+        var span = resetUtc.Value - DateTime.UtcNow;
+        if (span <= TimeSpan.Zero) return "· 即将重置";
+        if (span.TotalMinutes < 60) return $"· {(int)Math.Ceiling(span.TotalMinutes)}分钟后重置";
+        if (span.TotalHours < 48) return $"· {span.TotalHours:F1}小时后重置";
+        return $"· {span.TotalDays:F1}天后重置";
+    }
+
+    /// <summary>按剩余量着色:充足青、偏低黄、告急红(绝对值型无百分比,用青)。</summary>
+    private static Brush PlanValueBrush(QuotaWindow? w)
+    {
+        double remain = w?.RemainingValue != null && w?.UsedPercent == null ? 100 : 100 - (w?.UsedPercent ?? 0);
+        return remain switch
+        {
+            < 10 => BrushFromHex("#F87171"),
+            < 30 => BrushFromHex("#FBBF24"),
+            _ => BrushFromHex("#22D3EE"),
+        };
+    }
+
+    private static Brush BrushFromHex(string hex) =>
+        new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
 
     // ---------- 辅助 ----------
 

@@ -11,6 +11,13 @@ public sealed class AppConfig
     public bool ShowWeather { get; set; } = true;
     public bool ShowHint { get; set; } = true;
     public string AmapKey { get; set; } = "";         // 高德 Web服务 Key;空 = Open-Meteo 免费源
+
+    // ---- Coding Plan 额度 ----
+    public bool ShowCodingPlan { get; set; } = true;
+    public string DeepSeekKey { get; set; } = "";     // DeepSeek 开放平台 API Key
+    public string ZhipuKey { get; set; } = "";        // 智谱 open.bigmodel.cn API Key(个人版,Authorization 头直接传)
+    public string VolcAk { get; set; } = "";          // 火山引擎 AccessKey ID(控制台 IAM,非推理 API Key)
+    public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
 }
 
 /// <summary>config.json 配置中心:设置窗口读写,面板即时生效。</summary>

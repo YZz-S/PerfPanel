@@ -22,6 +22,11 @@ public partial class SettingsWindow : Window
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
         chkShowHint.IsChecked = c.ShowHint;
+        chkShowPlan.IsChecked = c.ShowCodingPlan;
+        txtDsKey.Text = c.DeepSeekKey;
+        txtZpKey.Text = c.ZhipuKey;
+        txtVolcAk.Text = c.VolcAk;
+        txtVolcSk.Text = c.VolcSk;
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
         lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
@@ -92,6 +97,13 @@ public partial class SettingsWindow : Window
         chkShowWeather.Checked += (_, _) => Apply(c => c.ShowWeather = true);
         chkShowWeather.Unchecked += (_, _) => Apply(c => c.ShowWeather = false);
 
+        chkShowPlan.Checked += (_, _) => { Apply(c => c.ShowCodingPlan = true); _ = _main.RefreshCodingPlanAsync(); };
+        chkShowPlan.Unchecked += (_, _) => Apply(c => c.ShowCodingPlan = false);
+
+        btnDsTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.DeepSeek);
+        btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
+        btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
+
         sldScale.ValueChanged += (_, _) =>
         {
             Config.Current.Scale = Math.Round(sldScale.Value, 2);
@@ -129,6 +141,69 @@ public partial class SettingsWindow : Window
         change(Config.Current);
         Config.Save();
         _main.ApplyConfig();
+    }
+
+    private enum PlanKind { DeepSeek, Zhipu, Volc }
+
+    /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
+    private async Task SaveAndTestPlanAsync(PlanKind kind)
+    {
+        var c = Config.Current;
+        string key = "", ak = "", sk = "";
+        Button btn;
+        switch (kind)
+        {
+            case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
+            case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
+            default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
+        }
+        Config.Save();
+
+        bool empty = kind == PlanKind.Volc ? ak.Length == 0 || sk.Length == 0 : key.Length == 0;
+        if (empty)
+        {
+            await _main.RefreshCodingPlanAsync();
+            MessageBox.Show(this, "已保存(留空 = 面板不再查询该项)", "PerfPanel",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        btn.IsEnabled = false;
+        try
+        {
+            PlanStatus r = kind switch
+            {
+                PlanKind.DeepSeek => await _main.CodingPlan.QueryDeepSeekAsync(key),
+                PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
+                _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
+            };
+            string msg = r.Ok
+                ? "✓ 查询成功\n" + string.Join("\n", r.Windows.Select(FormatPlanTestLine))
+                : "✗ " + r.Error;
+            await _main.RefreshCodingPlanAsync();
+            // 弹框必须带 owner:主面板是 Topmost 全屏窗(同高德 Key)
+            MessageBox.Show(this, msg, "PerfPanel", MessageBoxButton.OK,
+                r.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
+        }
+        finally { btn.IsEnabled = true; }
+    }
+
+    private static string FormatPlanTestLine(QuotaWindow w)
+    {
+        if (w.UsedPercent is null && w.RemainingValue is { } abs)
+            return $"{w.Label}:{abs:0.##}";
+        string reset = w.ResetUtc is { } r
+            ? $"({FormatResetIn(r)})" : "";
+        return $"{w.Label}窗 已用 {w.UsedPercent:F0}% {reset}".TrimEnd();
+    }
+
+    private static string FormatResetIn(DateTime resetUtc)
+    {
+        var span = resetUtc - DateTime.UtcNow;
+        if (span <= TimeSpan.Zero) return "即将重置";
+        if (span.TotalMinutes < 60) return $"{(int)Math.Ceiling(span.TotalMinutes)}分钟后重置";
+        if (span.TotalHours < 48) return $"{span.TotalHours:F1}小时后重置";
+        return $"{span.TotalDays:F1}天后重置";
     }
 
     private void UpdateCityStatus()

@@ -1,0 +1,436 @@
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+namespace PerfPanel.Services;
+
+/// <summary>单个限额窗口(5h/周/月)或余额条目。</summary>
+/// <param name="UsedPercent">已用百分比 0-100;余额类为 null。</param>
+/// <param name="RemainingValue">剩余绝对值(金额/点数);百分比类为 null。</param>
+public sealed record QuotaWindow(
+    string Label, double? UsedPercent, double? RemainingValue, double? TotalValue, DateTime? ResetUtc);
+
+/// <summary>一个供应商的额度状态。Ok=false 且 Error 非空 = 当前不可用;
+/// Ok=true 且 StaleError 非空 = 显示的是上次成功快照(本次刷新失败)。</summary>
+public sealed record PlanStatus
+{
+    public required string Name { get; init; }
+    public bool Ok { get; init; }
+    public string? PlanName { get; init; }
+    public string? Unit { get; init; }                  // CNY / 点;null = 百分比
+    public IReadOnlyList<QuotaWindow> Windows { get; init; } = [];
+    public string? Error { get; init; }
+    public string? StaleError { get; init; }
+}
+
+/// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、智谱 GLM(非官方)、火山方舟(非官方)。
+/// 刷新失败保留上次成功值;三供应商相互独立容错。</summary>
+public sealed class CodingPlanService
+{
+    public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(15);
+
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private readonly Dictionary<string, PlanStatus> _last = [];
+
+    public IReadOnlyList<PlanStatus> Current { get; private set; } = [];
+    public DateTime LastRefreshUtc { get; private set; }
+    public bool AnyKeyConfigured
+    {
+        get
+        {
+            var c = Config.Current;
+            return !string.IsNullOrWhiteSpace(c.DeepSeekKey)
+                || !string.IsNullOrWhiteSpace(c.ZhipuKey)
+                || (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk));
+        }
+    }
+
+    /// <summary>并行刷新全部已配置的供应商,结果写入 Current。</summary>
+    public async Task<IReadOnlyList<PlanStatus>> FetchAllAsync()
+    {
+        var c = Config.Current;
+        var queries = new List<Task<PlanStatus>>();
+        if (!string.IsNullOrWhiteSpace(c.DeepSeekKey)) queries.Add(QueryDeepSeekAsync(c.DeepSeekKey.Trim()));
+        if (!string.IsNullOrWhiteSpace(c.ZhipuKey)) queries.Add(QueryZhipuAsync(c.ZhipuKey.Trim()));
+        if (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk))
+            queries.Add(QueryVolcAsync(c.VolcAk.Trim(), c.VolcSk.Trim()));
+
+        if (queries.Count > 0)
+        {
+            var results = await Task.WhenAll(queries);
+            Current = results.Select(Merge).ToList();
+            LastRefreshUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            Current = [];
+        }
+        return Current;
+    }
+
+    /// <summary>成功覆盖缓存;失败保留旧快照并附 StaleError,无旧快照才透出错误。</summary>
+    private PlanStatus Merge(PlanStatus fresh)
+    {
+        if (fresh.Ok)
+        {
+            _last[fresh.Name] = fresh;
+            return fresh;
+        }
+        if (_last.TryGetValue(fresh.Name, out var old) && old.Ok)
+            return old with { StaleError = fresh.Error };
+        _last[fresh.Name] = fresh;
+        return fresh;
+    }
+
+    private static PlanStatus Ok(string name, IReadOnlyList<QuotaWindow> windows,
+        string? plan = null, string? unit = null) =>
+        new() { Name = name, Ok = true, Windows = windows, PlanName = plan, Unit = unit };
+
+    private static PlanStatus Err(string name, string error) =>
+        new() { Name = name, Ok = false, Error = error };
+
+    // ==================== DeepSeek(官方接口) ====================
+    // GET https://api.deepseek.com/user/balance
+    // { is_available, balance_infos: [{ currency, total_balance, ... }] }
+
+    public async Task<PlanStatus> QueryDeepSeekAsync(string key)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.deepseek.com/user/balance");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                return Err("DeepSeek", $"鉴权失败(HTTP {(int)resp.StatusCode}),请检查 API Key");
+            if (!resp.IsSuccessStatusCode)
+                return Err("DeepSeek", $"API 错误(HTTP {(int)resp.StatusCode})");
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+            bool available = root.TryGetProperty("is_available", out var av) && av.GetBoolean();
+            if (root.TryGetProperty("balance_infos", out var infos) && infos.GetArrayLength() > 0)
+            {
+                var info = infos[0];
+                string currency = Str(info, "currency");
+                if (currency.Length == 0) currency = "CNY";
+                double total = ParseD(info, "total_balance");
+                var w = new List<QuotaWindow>
+                {
+                    new("余额", null, total, ParseD(info, "topped_up_balance") + ParseD(info, "granted_balance"), null),
+                };
+                return Ok("DeepSeek", w, null, currency);
+            }
+            return Err("DeepSeek", available ? "响应中没有余额信息" : "账户不可用(余额不足或被禁用)");
+        }
+        catch (Exception ex)
+        {
+            return Err("DeepSeek", $"网络错误:{ex.Message}");
+        }
+    }
+
+    // ==================== 智谱 GLM Coding Plan(非官方) ====================
+    // GET https://open.bigmodel.cn/api/monitor/usage/quota/limit
+    // Authorization 头直接放 API Key(不加 Bearer)。
+    // data.limits[]: TOKENS_LIMIT 条目,unit=3 是 5h 窗、unit=6 是周窗;
+    // percentage 为已用百分比,nextResetTime 为毫秒时间戳。
+
+    public async Task<PlanStatus> QueryZhipuAsync(string key)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                "https://open.bigmodel.cn/api/monitor/usage/quota/limit");
+            req.Headers.TryAddWithoutValidation("Authorization", key); // 智谱不加 Bearer 前缀
+            req.Headers.AcceptLanguage.ParseAdd("en-US,en");
+            using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                return Err("GLM", $"鉴权失败(HTTP {(int)resp.StatusCode}),请检查 API Key");
+            if (!resp.IsSuccessStatusCode)
+                return Err("GLM", $"API 错误(HTTP {(int)resp.StatusCode})");
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+            if (root.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.False)
+                return Err("GLM", $"API 错误:{Str(root, "msg")}");
+            if (!root.TryGetProperty("data", out var data))
+                return Err("GLM", "响应中缺少 data 字段");
+
+            var windows = ParseZhipuWindows(data);
+            if (windows.Count == 0)
+                return Err("GLM", "响应中没有可解析的额度条目");
+            return Ok("GLM", windows, Str(data, "level"));
+        }
+        catch (Exception ex)
+        {
+            return Err("GLM", $"网络错误:{ex.Message}");
+        }
+    }
+
+    private static List<QuotaWindow> ParseZhipuWindows(JsonElement data)
+    {
+        QuotaWindow? fiveHour = null, weekly = null;
+        var unclassified = new List<(long? ResetMs, double Pct, DateTime? Reset)>();
+
+        if (data.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in limits.EnumerateArray())
+            {
+                string type = Str(item, "type");
+                if (!type.Equals("TOKENS_LIMIT", StringComparison.OrdinalIgnoreCase) &&
+                    !type.Equals("CREDIT_LIMIT", StringComparison.OrdinalIgnoreCase)) continue;
+
+                double pct = item.TryGetProperty("percentage", out var p) ? p.GetDouble() : 0;
+                long? resetMs = item.TryGetProperty("nextResetTime", out var r) ? r.GetInt64() : null;
+                DateTime? reset = resetMs is > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(resetMs.Value).UtcDateTime : null;
+                int unit = item.TryGetProperty("unit", out var u) ? u.GetInt32() : 0;
+
+                if (unit == 3 && fiveHour == null) fiveHour = new QuotaWindow("5h", pct, null, null, reset);
+                else if (unit == 6 && weekly == null) weekly = new QuotaWindow("周", pct, null, null, reset);
+                else unclassified.Add((resetMs, pct, reset));
+            }
+        }
+
+        // 兜底:无重置时间的优先归 5h 窗,其余按重置时间升序填缺(unit 缺失或新增取值时)
+        foreach (var e in unclassified
+            .OrderBy(x => x.ResetMs is null ? 0 : 1)
+            .ThenBy(x => x.ResetMs ?? long.MinValue))
+        {
+            if (fiveHour == null) fiveHour = new QuotaWindow("5h", e.Pct, null, null, e.Reset);
+            else if (weekly == null) weekly = new QuotaWindow("周", e.Pct, null, null, e.Reset);
+        }
+
+        var result = new List<QuotaWindow>(2);
+        if (fiveHour != null) result.Add(fiveHour);
+        if (weekly != null) result.Add(weekly);
+        return result;
+    }
+
+    // ==================== 火山方舟 Agent/Coding Plan(非官方) ====================
+    // 控制面 OpenAPI(非推理域名),需火山引擎 AK/SK 签名 V4(推理 API Key 无法使用):
+    // POST https://open.volcengineapi.com/?Action=GetAFPUsage&Region=cn-beijing&Version=2024-01-01
+    // 先查 Agent Plan(GetAFPUsage,绝对额度),无订阅再查 Coding Plan(GetCodingPlanUsage,百分比)。
+
+    private const string VolcHost = "open.volcengineapi.com";
+    private const string VolcVersion = "2024-01-01";
+    private const string VolcRegion = "cn-beijing";
+    private const string VolcService = "ark";
+    private const string VolcContentType = "application/json; charset=utf-8";
+    private const string VolcSignedHeaders = "host;x-date;x-content-sha256;content-type";
+    private const string VolcAkskHint = "需填火山引擎控制台的 AccessKey ID/Secret(不是推理 API Key),且账号需有 Ark 用量查询权限";
+
+    public async Task<PlanStatus> QueryVolcAsync(string ak, string sk)
+    {
+        // 1) Agent Plan:绝对额度 Quota/Used
+        var afp = await VolcCallAsync(ak, sk, "GetAFPUsage");
+        if (afp.Status is VolcStatus.Auth) return Err("火山方舟", $"{afp.Message}。{VolcAkskHint}");
+        if (afp.Status is VolcStatus.Body)
+        {
+            var inner = afp.Body.TryGetProperty("Result", out var r) ? r : afp.Body;
+            var windows = ParseAfpTiers(inner);
+            if (windows.Count > 0)
+            {
+                string plan = Str(inner, "PlanType");
+                return Ok("火山方舟", windows, plan.Length > 0 ? $"Agent Plan {plan}" : "Agent Plan", "点");
+            }
+        }
+
+        // 2) Coding Plan:百分比
+        var cp = await VolcCallAsync(ak, sk, "GetCodingPlanUsage");
+        if (cp.Status is VolcStatus.Auth) return Err("火山方舟", $"{cp.Message}。{VolcAkskHint}");
+        if (cp.Status is VolcStatus.Body)
+        {
+            var inner = cp.Body.TryGetProperty("Result", out var r2) ? r2 : cp.Body;
+            var windows = ParseCodingPlanTiers(inner);
+            if (windows.Count > 0)
+                return Ok("火山方舟", windows, "Coding Plan");
+        }
+
+        string? detail = FirstError(afp, cp);
+        return Err("火山方舟", detail ?? "未找到生效中的 Agent Plan / Coding Plan 订阅");
+    }
+
+    private static string? FirstError(VolcResponse a, VolcResponse b)
+    {
+        var sb = new List<string>();
+        if (a.Status is VolcStatus.Soft && a.Message != null) sb.Add($"GetAFPUsage:{a.Message}");
+        if (b.Status is VolcStatus.Soft && b.Message != null) sb.Add($"GetCodingPlanUsage:{b.Message}");
+        return sb.Count > 0 ? string.Join("; ", sb) : null;
+    }
+
+    /// <summary>GetAFPUsage 的 5h/周/月窗口;Quota&lt;=0 视为未订阅该窗口,跳过。</summary>
+    private static List<QuotaWindow> ParseAfpTiers(JsonElement result)
+    {
+        var windows = new List<QuotaWindow>();
+        foreach (var (key, label) in new[] { ("AFPFiveHour", "5h"), ("AFPWeekly", "周"), ("AFPMonthly", "月") })
+        {
+            if (!result.TryGetProperty(key, out var win)) continue;
+            double quota = ParseD(win, "Quota");
+            if (quota <= 0) continue;
+            double used = ParseD(win, "Used");
+            DateTime? reset = win.TryGetProperty("ResetTime", out var rt) ? ParseResetTime(rt) : null;
+            windows.Add(new QuotaWindow(label, used / quota * 100.0, quota - used, quota, reset));
+        }
+        return windows;
+    }
+
+    /// <summary>GetCodingPlanUsage 的 session/weekly/monthly 窗口(只有百分比,防御式字段匹配)。</summary>
+    private static List<QuotaWindow> ParseCodingPlanTiers(JsonElement result)
+    {
+        var windows = new List<QuotaWindow>();
+        if (!(result.TryGetProperty("QuotaUsage", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            && !(result.TryGetProperty("Usages", out arr) && arr.ValueKind == JsonValueKind.Array)
+            && !(result.TryGetProperty("Details", out arr) && arr.ValueKind == JsonValueKind.Array))
+            return windows;
+
+        foreach (var item in arr.EnumerateArray())
+        {
+            string label = Str(item, "Level");
+            if (label.Length == 0) label = Str(item, "Type");
+            string? name = label.ToLowerInvariant() switch
+            {
+                "session" or "5h" or "fivehour" or "five_hour" or "rolling_5h" => "5h",
+                "weekly" or "week" or "7d" => "周",
+                "monthly" or "month" => "月",
+                _ => null,
+            };
+            if (name == null) continue;
+
+            double used = item.TryGetProperty("Percent", out var p) ? ParseD2(p) : 0;
+            DateTime? reset = item.TryGetProperty("ResetTime", out var rt) ? ParseResetTime(rt) : null;
+            windows.Add(new QuotaWindow(name, used, null, null, reset));
+        }
+        return windows;
+    }
+
+    private enum VolcStatus { Body, Auth, Soft }
+
+    private sealed record VolcResponse(VolcStatus Status, JsonElement Body = default, string? Message = null);
+
+    private async Task<VolcResponse> VolcCallAsync(string ak, string sk, string action)
+    {
+        try
+        {
+            // canonical query 按 key 字母序(Action < Region < Version),签名与实际 URL 共用同一份串
+            string query = $"Action={action}&Region={VolcRegion}&Version={VolcVersion}";
+            (string authorization, string xDate, string payloadHash) = VolcSign(ak, sk, query, "");
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"https://{VolcHost}/?{query}");
+            req.Headers.TryAddWithoutValidation("X-Date", xDate);
+            req.Headers.TryAddWithoutValidation("X-Content-Sha256", payloadHash);
+            req.Headers.TryAddWithoutValidation("Authorization", authorization);
+            req.Content = new StringContent("", new UTF8Encoding(false), "application/json"); // charset=utf-8 与签名一致
+
+            using var resp = await _http.SendAsync(req);
+            string body = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+
+            // 火山网关常以 200/4xx + ResponseMetadata.Error 信封返回业务错误
+            if (TryVolcError(doc.RootElement, out var code, out var msg))
+            {
+                if (IsVolcAuthCode(code))
+                    return new VolcResponse(VolcStatus.Auth, Message: $"鉴权失败({code}):{msg}");
+                return new VolcResponse(VolcStatus.Soft, Message: $"API 错误({code}):{msg}");
+            }
+            if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                return new VolcResponse(VolcStatus.Auth, Message: $"鉴权失败(HTTP {(int)resp.StatusCode})");
+            if (!resp.IsSuccessStatusCode)
+                return new VolcResponse(VolcStatus.Soft, Message: $"API 错误(HTTP {(int)resp.StatusCode})");
+
+            return new VolcResponse(VolcStatus.Body, doc.RootElement.Clone());
+        }
+        catch (Exception ex)
+        {
+            return new VolcResponse(VolcStatus.Soft, Message: $"网络错误:{ex.Message}");
+        }
+    }
+
+    /// <summary>火山引擎签名 V4(AWS SigV4 变体):canonical headers 固定顺序不按字母序,
+    /// algorithm 为 HMAC-SHA256(无 AWS4 前缀),scope 结尾 request,kDate=HMAC(SK, date)。</summary>
+    internal static (string Authorization, string XDate, string PayloadHash) VolcSign(
+        string ak, string sk, string canonicalQuery, string payload, DateTime? nowUtc = null)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        string xDate = now.ToString("yyyyMMddTHHmmssZ");
+        string shortDate = now.ToString("yyyyMMdd");
+        string payloadHash = Sha256Hex(payload);
+
+        string canonicalHeaders =
+            $"host:{VolcHost}\nx-date:{xDate}\nx-content-sha256:{payloadHash}\ncontent-type:{VolcContentType}\n";
+        string canonicalRequest =
+            $"POST\n/\n{canonicalQuery}\n{canonicalHeaders}\n{VolcSignedHeaders}\n{payloadHash}";
+
+        string scope = $"{shortDate}/{VolcRegion}/{VolcService}/request";
+        string stringToSign = $"HMAC-SHA256\n{xDate}\n{scope}\n{Sha256Hex(canonicalRequest)}";
+
+        byte[] kDate = Hmac(Encoding.UTF8.GetBytes(sk), shortDate);
+        byte[] kRegion = Hmac(kDate, VolcRegion);
+        byte[] kService = Hmac(kRegion, VolcService);
+        byte[] kSigning = Hmac(kService, "request");
+        string signature = Hex(Hmac(kSigning, stringToSign));
+
+        string authorization =
+            $"HMAC-SHA256 Credential={ak}/{scope}, SignedHeaders={VolcSignedHeaders}, Signature={signature}";
+        return (authorization, xDate, payloadHash);
+    }
+
+    private static bool TryVolcError(JsonElement body, out string code, out string msg)
+    {
+        code = "";
+        msg = "";
+        if (!(body.TryGetProperty("ResponseMetadata", out var meta) && meta.TryGetProperty("Error", out var err))
+            && !body.TryGetProperty("Error", out err))
+            return false;
+        code = Str(err, "Code");
+        msg = Str(err, "Message");
+        return code.Length > 0 || msg.Length > 0;
+    }
+
+    private static bool IsVolcAuthCode(string code)
+    {
+        string c = code.ToLowerInvariant();
+        return c.Contains("auth") || c.Contains("signature") || c.Contains("denied")
+            || c.Contains("unauthorized") || c.Contains("forbidden") || c.Contains("credential") || c.Contains("token");
+    }
+
+    // ==================== 工具 ====================
+
+    /// <summary>解析重置时间:兼容 ISO 字符串与秒/毫秒时间戳;0/负值视为无重置时间。</summary>
+    private static DateTime? ParseResetTime(JsonElement v)
+    {
+        if (v.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(v.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToUniversalTime();
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n))
+        {
+            if (n <= 0) return null;
+            long ms = n < 1_000_000_000_000 ? n * 1000 : n; // 秒级 < 1e12,毫秒 >= 1e12
+            return DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
+        }
+        return null;
+    }
+
+    private static string Str(JsonElement obj, string prop) =>
+        obj.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    private static double ParseD(JsonElement obj, string prop) =>
+        obj.TryGetProperty(prop, out var v) ? ParseD2(v) : 0;
+
+    /// <summary>数字/字符串双兼容(如 100 与 "100")。</summary>
+    private static double ParseD2(JsonElement v) =>
+        v.ValueKind == JsonValueKind.Number ? v.GetDouble()
+        : v.ValueKind == JsonValueKind.String && double.TryParse(v.GetString(), out var d) ? d : 0;
+
+    private static byte[] Hmac(byte[] key, string data)
+    {
+        using var h = new HMACSHA256(key);
+        return h.ComputeHash(Encoding.UTF8.GetBytes(data));
+    }
+
+    private static string Sha256Hex(string data) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(data))).ToLowerInvariant();
+
+    private static string Hex(byte[] data) => Convert.ToHexString(data).ToLowerInvariant();
+}

@@ -10,6 +10,7 @@
 - **内存**:占用百分比 + 已用/总量
 - **网络**:实时上/下行速度 + 下行历史曲线,自动选择活动网卡
 - **天气**:Open-Meteo 免费接口(无需 key),自动 IP 定位(可手动改 `weather.json`)
+- **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan 剩余额度与重置倒计时
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
 
 ## 运行
@@ -62,6 +63,26 @@ PerfPanel.exe --set-city 上海
 ```json
 {"lat": 31.2304, "lon": 121.4737, "city": "上海"}
 ```
+
+## Coding Plan 额度监控
+
+面板新增 CODING PLAN 卡片,显示各订阅的剩余额度与重置倒计时(15 分钟自动刷新,失败保留上次成功值):
+
+| 供应商 | 查询方式 | 显示内容 |
+|---|---|---|
+| DeepSeek | 官方接口 `/user/balance` | 账户余额(¥) |
+| 智谱 GLM Coding Plan | 非官方接口(同 CC Switch) | 5h 窗/周窗剩余百分比 + 重置倒计时 |
+| 火山方舟 Agent/Coding Plan | 非官方控制面 OpenAPI(同 CC Switch) | 5h/周/月窗剩余额度 + 重置倒计时 |
+
+**密钥填充位置**:设置(S 或 ⚙)→「Coding Plan 额度」:
+
+- **DeepSeek**:填 [api.deepseek.com](https://platform.deepseek.com) 的 API Key
+- **智谱 GLM**:填 [open.bigmodel.cn](https://open.bigmodel.cn) 的 API Key(个人版;非 Coding Plan 专用的 GLM API Key 亦可查询)
+- **火山方舟**:填**火山引擎控制台 IAM 的 AccessKey ID + Secret Access Key**(即 [volcengine.com](https://www.volcengine.com) 控制台右上角头像 → API 访问密钥),**不是**推理用的 Ark API Key —— 火山用量查询走控制面 OpenAPI,需 AK/SK 签名,推理 Key 无法使用
+
+各项均「保存并测试」即时验证;留空 = 面板不查询该项。密钥保存在 exe 旁 `config.json`。
+
+> 智谱/火山为非官方接口(参考 CC Switch 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。
 
 ## 构建
 

@@ -100,6 +100,51 @@
             </StackPanel>
         </Border>
 
+        <!-- ============ Coding Plan 额度 ============ -->
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="Coding Plan 额度" Style="{StaticResource SectionTitleStyle}"/>
+                <CheckBox x:Name="chkShowPlan" Content="显示额度卡片(15 分钟自动刷新)" Style="{StaticResource CheckStyle}"/>
+
+                <TextBlock Text="DeepSeek API Key(api.deepseek.com,查账户余额)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtDsKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                    <Button x:Name="btnDsTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+
+                <TextBlock Text="智谱 GLM API Key(open.bigmodel.cn,查 Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtZpKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                    <Button x:Name="btnZpTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+
+                <TextBlock Text="火山引擎 AccessKey ID / Secret(查 Agent/Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtVolcAk" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                    <Button x:Name="btnVolcTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+                <TextBox x:Name="txtVolcSk" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,8,0,0"
+                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱填各自开放平台的 API Key。均留空 = 不查询该项。"
+                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
         <!-- ============ 界面 ============ -->
         <Border Style="{StaticResource CardStyle}">
             <StackPanel>
