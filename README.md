@@ -56,6 +56,8 @@ The easiest way: double-click the ready-made scripts in `dist/` —
 - `开机自启-开启(普通权限).bat` ("Autostart on, normal privileges"): no UAC prompt, but no CPU temperature/power/fan after boot
 - `开机自启-关闭.bat` ("Autostart off")
 
+> `dist/PerfPanel-开机自启-管理员.xml` is a template for manual import via `schtasks /create /xml ...` — rarely needed, since the scripts above register everything automatically. If you do import it manually, first change the path in its `<Command>` element to the actual location of `PerfPanel.exe` on your machine.
+
 ## Weather: custom location + refresh countdown
 
 - The weather card shows "City · refreshes in N min" and auto-refreshes every 30 minutes

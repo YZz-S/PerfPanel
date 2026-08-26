@@ -56,6 +56,8 @@ PerfPanel.exe --autostart-status   # 查看当前注册状态
 - `开机自启-开启(普通权限).bat`:不弹 UAC,但开机后无 CPU 温度/功耗/风扇
 - `开机自启-关闭.bat`
 
+> `dist/PerfPanel-开机自启-管理员.xml` 是供 `schtasks /create /xml ...` 手动导入的模板,一般用不到(上面的 bat 会自动完成注册)。若确需手动导入,请先把文件中 `<Command>` 里的路径改成本机 `PerfPanel.exe` 的实际位置。
+
 ## 天气:位置自定义 + 刷新倒计时
 
 - 面板天气卡片实时显示「城市 · N分钟后刷新」,每 30 分钟自动刷新
