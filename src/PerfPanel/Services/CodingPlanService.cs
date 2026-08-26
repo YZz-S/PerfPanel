@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -299,7 +300,10 @@ public sealed class CodingPlanService
             if (name == null) continue;
 
             double used = item.TryGetProperty("Percent", out var p) ? ParseD2(p) : 0;
-            DateTime? reset = item.TryGetProperty("ResetTime", out var rt) ? ParseResetTime(rt) : null;
+            // 字段名双兜底(对齐 CC Switch 实测):ResetTime / ResetTimestamp
+            DateTime? reset = null;
+            if (item.TryGetProperty("ResetTime", out var rt)) reset = ParseResetTime(rt);
+            else if (item.TryGetProperty("ResetTimestamp", out var rts)) reset = ParseResetTime(rts);
             windows.Add(new QuotaWindow(name, used, null, null, reset));
         }
         return windows;
@@ -339,7 +343,9 @@ public sealed class CodingPlanService
             if (!resp.IsSuccessStatusCode)
                 return new VolcResponse(VolcStatus.Soft, Message: $"API 错误(HTTP {(int)resp.StatusCode})");
 
-            return new VolcResponse(VolcStatus.Body, doc.RootElement.Clone());
+            var bodyElement = doc.RootElement.Clone();
+            DumpVolcBody(action, bodyElement); // 诊断:非官方接口,落盘真实响应便于核对字段
+            return new VolcResponse(VolcStatus.Body, bodyElement);
         }
         catch (Exception ex)
         {
@@ -386,6 +392,40 @@ public sealed class CodingPlanService
         code = Str(err, "Code");
         msg = Str(err, "Message");
         return code.Length > 0 || msg.Length > 0;
+    }
+
+    private static readonly object _dumpLock = new();
+
+    /// <summary>把火山 OpenAPI 最近一次成功响应落盘到 exe 旁 volc-last-response.json
+    /// (结构:{updatedAt, GetAFPUsage, GetCodingPlanUsage})。非官方接口字段若有变动,
+    /// 可据此核对真实字段名。失败静默,不影响查询。</summary>
+    private static void DumpVolcBody(string action, JsonElement body)
+    {
+        try
+        {
+            lock (_dumpLock)
+            {
+                string path = Path.Combine(AppContext.BaseDirectory, "volc-last-response.json");
+                var map = new Dictionary<string, JsonElement>();
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        using var old = JsonDocument.Parse(File.ReadAllText(path));
+                        if (old.RootElement.ValueKind == JsonValueKind.Object)
+                            foreach (var p in old.RootElement.EnumerateObject())
+                                if (p.Name != "updatedAt")
+                                    map[p.Name] = p.Value.Clone();
+                    }
+                    catch { }
+                }
+                map[action] = body;
+                map["updatedAt"] = JsonSerializer.SerializeToElement(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                File.WriteAllText(path,
+                    JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch { }
     }
 
     private static bool IsVolcAuthCode(string code)
