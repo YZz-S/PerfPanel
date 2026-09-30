@@ -11,8 +11,9 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 ## Features
 
 - **Clock**: live time, date & weekday, uptime
-- **CPU**: large usage readout + 120s history graph, frequency, temperature, power draw, fan speed
-- **GPU**: usage + history graph, VRAM usage (progress bar), temperature, power draw, fan
+- **CPU**: large usage readout + 120s history graph, frequency (LHM core clocks, falling back to WMI effective frequency that can exceed the nominal rate under boost), temperature, power draw, fan speed (desktop boards whose SuperIO chip exposes a fan sensor; some mini-PC / laptop EC fans are not readable)
+- **GPU**: usage + history graph, VRAM usage (progress bar), temperature, power draw, fan (rows hide automatically when the iGPU exposes no sensor; AMD iGPU temperature comes from its VR SoC sensor)
+- **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode shows a slim notes strip at the bottom
 - **RAM**: usage percentage + used/total
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
@@ -95,6 +96,16 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 Each item has "Save & Test" for instant validation; leave it empty and the panel simply skips that provider. Keys are stored in `config.json` next to the exe.
 
 > The GLM/Volcano integrations use unofficial APIs (mirroring the CC Switch implementation), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields.
+
+## Notes / todos / focus reminders
+
+The FOCUS card (portrait) or bottom notes strip (landscape) turns the secondary display into a focus board:
+
+- **Sticky note**: your one-line current goal (e.g. "focus on Calculus chapter 3"), always visible in amber
+- **Todos**: click a row right on the panel to toggle done (finished items get struck through and dimmed); pending items sort first
+- **Focus reminders**: every 15/30/45/60/90 minutes one rotating message highlights for 90 seconds — defaults include "stay on your review, don't get distracted" and "check the revision kanban"; otherwise the card shows a countdown and the next message preview
+
+Edit everything in Settings (S or ⚙) → "Notes / focus": sticky note, add/remove todos, cycle length, custom messages (one per line). Content persists in `notes.json` next to the exe; untick "show notes card" to hide the whole thing.
 
 ## Build
 

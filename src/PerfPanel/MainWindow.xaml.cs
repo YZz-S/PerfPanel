@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly MonitorAggregator _agg = new();
     private readonly WeatherService _weather = new();
     private readonly CodingPlanService _codingPlan = new();
+    private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly HistoryBuffer _cpuHist = new(HistoryCap);
     private readonly HistoryBuffer _gpuHist = new(HistoryCap);
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
     private PanelOrientation _orientation = PanelOrientation.Portrait;
     private bool _sampling;
     private int _lastPlanMinute = -1;
+    private DateTime _reminderActiveUntilUtc = DateTime.MinValue;
     private IntPtr _hwnd;
     private SettingsWindow? _settings;
 
@@ -39,9 +41,13 @@ public partial class MainWindow : Window
     /// <summary>设置窗口访问面板内部的 Coding Plan 服务。</summary>
     public CodingPlanService CodingPlan => _codingPlan;
 
+    /// <summary>设置窗口访问便签/待办服务。</summary>
+    public NotesService Notes => _notes;
+
     public MainWindow()
     {
         InitializeComponent();
+        _notes.Load();
         var args = Environment.GetCommandLineArgs();
         _windowed = args.Any(a =>
             a.Equals("--windowed", StringComparison.OrdinalIgnoreCase) ||
@@ -67,6 +73,7 @@ public partial class MainWindow : Window
 
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
+        RebuildTodoRows();
         _ = WeatherLoopAsync();
         _ = CodingPlanLoopAsync();
     }
@@ -111,6 +118,7 @@ public partial class MainWindow : Window
         txtHint.Visibility = c.ShowHint ? Visibility.Visible : Visibility.Collapsed;
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
+        if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;
         ApplyScale(c.Scale);
         UpdateLandscapeSpans();
     }
@@ -198,7 +206,10 @@ public partial class MainWindow : Window
         txtUptime.VerticalAlignment = VerticalAlignment.Stretch;
         btnGear.Margin = new Thickness(0, 0, 12, 0);
 
-        foreach (var card in new FrameworkElement[] { cardCpu, cardGpu, cardMemory, cardNetwork, cardWeather, cardCodingPlan })
+        foreach (var card in new FrameworkElement[]
+                 {
+                     cardCpu, cardGpu, cardMemory, cardNetwork, cardNotes, cardWeather, cardCodingPlan
+                 })
         {
             card.Margin = new Thickness(0, 0, 0, 12);
             MoveTo(portCards, card);
@@ -479,6 +490,9 @@ public partial class MainWindow : Window
             _lastPlanMinute = s.Time.Minute;
             UpdateCodingPlan();
         }
+
+        // ---- 便签 / 待办 / 专注提醒 ----
+        UpdateNotesCard(s.Time);
     }
 
     private void UpdateWeather()
@@ -714,6 +728,133 @@ public partial class MainWindow : Window
 
     private static Brush BrushFromHex(string hex) =>
         new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+
+    // ---------- 便签 / 待办 / 专注提醒 ----------
+
+    private string _activeReminderText = "";
+
+    /// <summary>设置窗口改动后刷新卡片(重建待办行 + 立即更新倒计时/横屏便签条)。</summary>
+    public void RefreshNotesCard()
+    {
+        RebuildTodoRows();
+        UpdateNotesCard(DateTime.Now);
+    }
+
+    /// <summary>每秒刷新:提醒周期到点触发轮换提醒,平时显示倒计时与横屏便签条。</summary>
+    private void UpdateNotesCard(DateTime nowLocal)
+    {
+        if (!Config.Current.ShowNotes)
+        {
+            landNotesStrip.Visibility = Visibility.Collapsed;
+            return; // cardNotes 已由 ApplyConfig 折叠
+        }
+        cardNotes.Visibility = Visibility.Visible;
+
+        var utcNow = DateTime.UtcNow;
+        if (_notes.IsReminderDue(utcNow))
+        {
+            _activeReminderText = _notes.TakeReminder(utcNow);
+            _reminderActiveUntilUtc = utcNow.AddSeconds(90);
+        }
+        bool active = utcNow < _reminderActiveUntilUtc;
+        int remainMin = (int)Math.Ceiling((_notes.LastReminderUtc.AddMinutes(_notes.ReminderMinutes) - utcNow).TotalMinutes);
+        if (remainMin < 0) remainMin = 0;
+
+        txtNotesCountdown.Text = active ? "提醒中" : $"{remainMin}分钟后提醒";
+
+        txtNoteText.Text = _notes.Note;
+        txtNoteText.Visibility = _notes.Note.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        bool hasTodos = _notes.Todos.Count > 0;
+        txtNotesHint.Text = _notes.Note.Length == 0 && !hasTodos ? "在设置(S)→『便签/专注』里写下便签与待办" : "";
+        txtNotesHint.Visibility = txtNotesHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (active)
+        {
+            rowNotesReminder.Background = BrushFromHex("#3A2B10");
+            txtNotesReminder.Text = "⏰ " + _activeReminderText;
+            txtNotesReminder.Foreground = BrushFromHex("#FBBF24");
+            txtNotesReminder.FontWeight = FontWeights.Bold;
+        }
+        else
+        {
+            rowNotesReminder.Background = BrushFromHex("#152340");
+            txtNotesReminder.Text = $"💡 {_notes.NextMessagePreview} · {remainMin}分钟后提醒";
+            txtNotesReminder.Foreground = BrushFromHex("#8FA3C8");
+            txtNotesReminder.FontWeight = FontWeights.Normal;
+        }
+        rowNotesReminder.Visibility = Visibility.Visible;
+
+        // 横屏便签条(竖屏卡片在 portCards 里,landscapeRoot 折叠时无布局开销)
+        landNotesStrip.Visibility = Visibility.Visible;
+        txtStripNote.Text = _notes.Note.Length > 0 ? _notes.Note : "—";
+        int done = _notes.Todos.Count(t => t.Done);
+        txtStripTodoLabel.Text = hasTodos ? $"待办 {done}/{_notes.Todos.Count}" : "待办";
+        txtStripTodo.Text = _notes.PendingTodos.FirstOrDefault()?.Text
+                            ?? (hasTodos ? "全部完成 ✓" : "暂无");
+        txtStripReminder.Text = active ? "⏰ " + _activeReminderText : $"{remainMin}分钟后提醒 · {_notes.NextMessagePreview}";
+    }
+
+    /// <summary>重建待办行:未完成在前,点击整行切换完成态。</summary>
+    private void RebuildTodoRows()
+    {
+        notesTodoPanel.Children.Clear();
+        foreach (var t in _notes.Todos.OrderByDescending(t => !t.Done))
+            notesTodoPanel.Children.Add(BuildTodoRow(t));
+    }
+
+    private FrameworkElement BuildTodoRow(TodoItem t)
+    {
+        var row = new Grid
+        {
+            Margin = new Thickness(2, 0, 2, 7),
+            Background = Brushes.Transparent, // 空白处也可点击
+            Cursor = Cursors.Hand,
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var box = new Border
+        {
+            Width = 16, Height = 16, CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1),
+            BorderBrush = BrushFromHex("#55648A"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (t.Done)
+        {
+            box.Background = BrushFromHex("#22D3EE");
+            box.Child = new TextBlock
+            {
+                Text = "✓", FontSize = 11, FontWeight = FontWeights.Bold,
+                Foreground = BrushFromHex("#0A0F1E"),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+        row.Children.Add(box);
+
+        var txt = new TextBlock
+        {
+            Text = t.Text,
+            FontSize = 13,
+            Foreground = BrushFromHex(t.Done ? "#55648A" : "#C9D6EE"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(9, 0, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        if (t.Done)
+            txt.TextDecorations = System.Windows.TextDecorations.Strikethrough;
+        Grid.SetColumn(txt, 1);
+        row.Children.Add(txt);
+
+        row.MouseLeftButtonDown += (_, _) =>
+        {
+            _notes.ToggleTodo(t);
+            RebuildTodoRows();
+            UpdateNotesCard(DateTime.Now);
+        };
+        return row;
+    }
 
     // ---------- 辅助 ----------
 

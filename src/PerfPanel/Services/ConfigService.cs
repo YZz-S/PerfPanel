@@ -19,6 +19,9 @@ public sealed class AppConfig
     public string ZhipuKey { get; set; } = "";        // 智谱 open.bigmodel.cn API Key(个人版,Authorization 头直接传)
     public string VolcAk { get; set; } = "";          // 火山引擎 AccessKey ID(控制台 IAM,非推理 API Key)
     public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
+
+    // ---- 便签 / 待办 ----
+    public bool ShowNotes { get; set; } = true;       // 便签待办卡片(内容存 notes.json)
 }
 
 /// <summary>config.json 配置中心:设置窗口读写,面板即时生效。</summary>

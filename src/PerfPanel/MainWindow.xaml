@@ -215,6 +215,31 @@
                             </Grid>
                         </Border>
 
+                        <!-- 便签 / 待办 / 专注提醒 -->
+                        <Border x:Name="cardNotes" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="FOCUS · 便签待办" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtNotesCountdown" Text="" FontSize="10" Foreground="#55648A"
+                                               HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
+                                </Grid>
+
+                                <TextBlock x:Name="txtNoteText" Text="" FontSize="15" FontWeight="Bold"
+                                           Foreground="#FBBF24" TextWrapping="Wrap" Margin="2,10,0,0"/>
+
+                                <StackPanel x:Name="notesTodoPanel" Margin="0,10,0,0"/>
+
+                                <TextBlock x:Name="txtNotesHint" Text="" FontSize="11" Foreground="#55648A"
+                                           TextWrapping="Wrap" Margin="2,8,0,0"/>
+
+                                <Border x:Name="rowNotesReminder" Margin="0,10,0,0" Padding="10,7" CornerRadius="8"
+                                        Background="#152340">
+                                    <TextBlock x:Name="txtNotesReminder" Text="" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="#8FA3C8"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
                         <!-- 天气 -->
                         <Border x:Name="cardWeather" Style="{StaticResource CardStyle}" Visibility="Collapsed">
                             <StackPanel>
@@ -301,6 +326,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- 头部:品牌 | 时钟(真居中,叠放层) | 日期/开机/模式 -->
@@ -348,8 +374,37 @@
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                 </Grid>
 
+                <!-- 便签条:横屏时占一整行,竖屏用完整卡片 -->
+                <Border x:Name="landNotesStrip" Grid.Row="2" Margin="16,2,16,6" Background="#111A2E"
+                        BorderBrush="#223052" BorderThickness="1" CornerRadius="12" Padding="14,7"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="4*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="3*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="FOCUS" FontSize="13" FontWeight="Bold" FontFamily="Consolas"
+                                   Foreground="#6EE7F7" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="txtStripNote" Grid.Column="1" Text="" FontSize="14" FontWeight="Bold"
+                                   Foreground="#FBBF24" VerticalAlignment="Center" Margin="14,0,10,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="txtStripTodoLabel" Grid.Column="2" Text="待办" FontSize="11"
+                                   Foreground="#55648A" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="txtStripTodo" Grid.Column="3" Text="" FontSize="13"
+                                   Foreground="#C9D6EE" VerticalAlignment="Center" Margin="8,0,10,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="txtStripReminder" Grid.Column="5" Text="" FontSize="12"
+                                   Foreground="#8FA3C8" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </Border>
+
                 <!-- 底部装饰 -->
-                <StackPanel x:Name="landFooter" Grid.Row="2" Margin="20,2,20,8">
+                <StackPanel x:Name="landFooter" Grid.Row="3" Margin="20,2,20,8">
                     <Border Height="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">

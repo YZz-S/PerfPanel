@@ -145,6 +145,58 @@
             </StackPanel>
         </Border>
 
+        <!-- ============ 便签 / 专注提醒 ============ -->
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="便签 / 专注提醒" Style="{StaticResource SectionTitleStyle}"/>
+                <CheckBox x:Name="chkShowNotes" Content="显示便签待办卡片(竖屏)/ 便签条(横屏)" Style="{StaticResource CheckStyle}"/>
+
+                <TextBlock Text="便签(一句话,如:专注复习《高数》第三章)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <TextBox x:Name="txtNote" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
+                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+
+                <TextBlock Text="待办清单(面板上点击整行即可勾选完成)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtNewTodo" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                    <Button x:Name="btnAddTodo" Grid.Column="1" Content="添加" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+                <Border Height="110" Margin="0,8,0,0" Background="#0F1729"
+                        BorderBrush="#223052" BorderThickness="1" CornerRadius="4">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="todoList" Margin="6"/>
+                    </ScrollViewer>
+                </Border>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="提醒周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbReminder" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0"
+                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
+                        <ComboBoxItem Content="15 分钟" Tag="15"/>
+                        <ComboBoxItem Content="30 分钟" Tag="30"/>
+                        <ComboBoxItem Content="45 分钟" Tag="45"/>
+                        <ComboBoxItem Content="60 分钟" Tag="60"/>
+                        <ComboBoxItem Content="90 分钟" Tag="90"/>
+                    </ComboBox>
+                </Grid>
+
+                <TextBlock Text="轮换提醒语(每行一条,到点在面板高亮提醒)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <TextBox x:Name="txtMessages" Height="72" AcceptsReturn="True" TextWrapping="Wrap" Padding="8,6" Margin="0,6,0,0"
+                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
+                         VerticalScrollBarVisibility="Auto"/>
+                <TextBlock Text="便签/待办保存在 exe 旁 notes.json;留空提醒语 = 不提醒。"
+                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
         <!-- ============ 界面 ============ -->
         <Border Style="{StaticResource CardStyle}">
             <StackPanel>

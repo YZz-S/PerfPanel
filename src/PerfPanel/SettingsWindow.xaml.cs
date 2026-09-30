@@ -32,6 +32,53 @@ public partial class SettingsWindow : Window
         lblScale.Text = $"{c.Scale * 100:F0}%";
         lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
 
+        // ---- 便签 / 专注提醒 ----
+        var notes = _main.Notes;
+        chkShowNotes.IsChecked = c.ShowNotes;
+        txtNote.Text = notes.Note;
+        txtMessages.Text = string.Join(Environment.NewLine, notes.Messages);
+        SelectReminder(notes.ReminderMinutes);
+        ReloadTodoList();
+
+        chkShowNotes.Checked += (_, _) => Apply(c => c.ShowNotes = true);
+        chkShowNotes.Unchecked += (_, _) => Apply(c => c.ShowNotes = false);
+
+        txtNote.TextChanged += (_, _) =>
+        {
+            _main.Notes.Note = txtNote.Text;
+            _main.Notes.Save();
+            _main.RefreshNotesCard();
+        };
+
+        btnAddTodo.Click += (_, _) =>
+        {
+            _main.Notes.AddTodo(txtNewTodo.Text);
+            txtNewTodo.Text = "";
+            ReloadTodoList();
+            _main.RefreshNotesCard();
+        };
+
+        cmbReminder.SelectionChanged += (_, _) =>
+        {
+            if (cmbReminder.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var min))
+            {
+                _main.Notes.ReminderMinutes = min;
+                _main.Notes.Save();
+                _main.RefreshNotesCard();
+            }
+        };
+
+        txtMessages.TextChanged += (_, _) =>
+        {
+            _main.Notes.Messages = txtMessages.Text
+                .Split('\n')
+                .Select(l => l.TrimEnd('\r').Trim())
+                .Where(l => l.Length > 0)
+                .ToList();
+            _main.Notes.Save();
+            _main.RefreshNotesCard();
+        };
+
         btnSaveKey.Click += async (_, _) =>
         {
             var key = txtAmapKey.Text.Trim();
@@ -249,6 +296,74 @@ public partial class SettingsWindow : Window
             }
         }
         cmbOrientation.SelectedIndex = 0; // 默认 auto
+    }
+
+    private void SelectReminder(int minutes)
+    {
+        foreach (ComboBoxItem item in cmbReminder.Items)
+        {
+            if (item.Tag is string tag && int.Parse(tag) == minutes)
+            {
+                cmbReminder.SelectedItem = item;
+                return;
+            }
+        }
+        cmbReminder.SelectedIndex = 1; // 默认 30
+    }
+
+    /// <summary>重建待办列表:勾选框切换完成、右侧删除。</summary>
+    private void ReloadTodoList()
+    {
+        todoList.Children.Clear();
+        foreach (var t in _main.Notes.Todos.ToList())
+        {
+            var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = System.Windows.GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = System.Windows.GridLength.Auto });
+
+            var chk = new CheckBox
+            {
+                IsChecked = t.Done,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0),
+            };
+            chk.Checked += (_, _) => { _main.Notes.ToggleTodo(t); _main.RefreshNotesCard(); };
+            chk.Unchecked += (_, _) => { _main.Notes.ToggleTodo(t); _main.RefreshNotesCard(); };
+            row.Children.Add(chk);
+
+            var label = new TextBlock
+            {
+                Text = t.Text,
+                FontSize = 13,
+                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC9, 0xD6, 0xEE)),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            if (t.Done)
+                label.TextDecorations = System.Windows.TextDecorations.Strikethrough;
+            System.Windows.Controls.Grid.SetColumn(label, 1);
+            row.Children.Add(label);
+
+            var del = new Button
+            {
+                Content = "删除",
+                Style = (Style)Resources["BtnStyle"],
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(6, 0, 0, 0),
+            };
+            del.Click += (_, _) =>
+            {
+                _main.Notes.RemoveTodo(t);
+                ReloadTodoList();
+                _main.RefreshNotesCard();
+            };
+            System.Windows.Controls.Grid.SetColumn(del, 2);
+            row.Children.Add(del);
+
+            todoList.Children.Add(row);
+        }
     }
 
     protected override void OnClosed(EventArgs e)
