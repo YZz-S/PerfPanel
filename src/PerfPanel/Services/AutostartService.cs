@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Principal;
 using Microsoft.Win32;
 
@@ -21,7 +20,12 @@ public static class AutostartService
 
     public static bool IsTaskRegistered()
     {
-        try { return RunSchtasks($"/Query /TN {TaskName}").ExitCode == 0; }
+        try
+        {
+            dynamic svc = ConnectService();
+            svc.GetFolder("\\").GetTask(TaskName); // 不存在时抛 COM 异常
+            return true;
+        }
         catch { return false; }
     }
 
@@ -39,17 +43,20 @@ public static class AutostartService
     {
         if (IsElevated())
         {
-            var p = RunSchtasks($"/Create /F /TN {TaskName} /TR \"\\\"{ExePath}\\\"\" /SC ONLOGON /RL HIGHEST");
-            if (p.ExitCode == 0)
+            try
             {
+                RegisterTask();
                 var (runOk, _) = TryRemoveRunKey(); // 避免双重启动
                 return (true, $"✓ 已注册开机自启(计划任务 · 最高权限,完整传感器)\n\n任务名:{TaskName}\n程序:{ExePath}" +
                               (runOk ? "\n已顺带清理旧的注册表启动项" : ""));
             }
-            var fb = TryWriteRunKey();
-            return fb.Ok
-                ? (true, $"计划任务注册失败,已改用注册表方式:\n{p.Output}\n\n建议右键管理员运行后重试。")
-                : (false, $"注册失败:\n{p.Output}\n{fb.Msg}");
+            catch (Exception ex)
+            {
+                var fb = TryWriteRunKey();
+                return fb.Ok
+                    ? (true, $"计划任务注册失败,已改用注册表方式:\n{ex.Message}\n\n建议右键管理员运行后重试。")
+                    : (false, $"注册失败:\n{ex.Message}\n{fb.Msg}");
+            }
         }
 
         var rk = TryWriteRunKey();
@@ -65,8 +72,16 @@ public static class AutostartService
         var lines = new List<string>();
         if (IsTaskRegistered())
         {
-            var p = RunSchtasks($"/Delete /F /TN {TaskName}");
-            lines.Add(p.ExitCode == 0 ? "✓ 已删除计划任务" : $"✗ 计划任务删除失败:{p.Output}");
+            try
+            {
+                dynamic svc = ConnectService();
+                svc.GetFolder("\\").DeleteTask(TaskName, 0);
+                lines.Add("✓ 已删除计划任务");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"✗ 计划任务删除失败:{ex.Message}");
+            }
         }
         var (ok, msg) = TryRemoveRunKey();
         if (ok) lines.Add("✓ 已清理注册表启动项");
@@ -78,6 +93,32 @@ public static class AutostartService
     public static string Status() => IsElevated()
         ? $"当前进程:管理员\n计划任务:{(IsTaskRegistered() ? "已注册" : "未注册")}\n注册表:{(IsRunKeyRegistered() ? "已注册" : "未注册")}"
         : $"当前进程:普通权限\n计划任务:{(IsTaskRegistered() ? "已注册" : "未注册")}\n注册表:{(IsRunKeyRegistered() ? "已注册" : "未注册")}";
+
+    private static dynamic ConnectService()
+    {
+        // Schedule.Service 是 Windows 内置 Task Scheduler 的 COM 接口;
+        // 相比拉起 schtasks.exe,无进程启动、无命令行拼接,动态值只进对象属性
+        var type = Type.GetTypeFromProgID("Schedule.Service")
+            ?? throw new InvalidOperationException("Task Scheduler COM 不可用");
+        dynamic svc = Activator.CreateInstance(type)
+            ?? throw new InvalidOperationException("Task Scheduler COM 实例化失败");
+        svc.Connect();
+        return svc;
+    }
+
+    private static void RegisterTask()
+    {
+        // TASK_CREATE_OR_UPDATE=6,TASK_LOGON_INTERACTIVE_TOKEN=3,
+        // TASK_TRIGGER_LOGON=9,TASK_ACTION_EXEC=0,TASK_RUNLEVEL_HIGHEST=1
+        dynamic svc = ConnectService();
+        dynamic def = svc.NewTask(0);
+        def.RegistrationInfo.Description = "PerfPanel 开机自启(完整传感器)";
+        def.Principal.RunLevel = 1;
+        def.Triggers.Create(9);
+        dynamic action = def.Actions.Create(0);
+        action.Path = ExePath;
+        svc.GetFolder("\\").RegisterTaskDefinition(TaskName, def, 6, null, null, 3);
+    }
 
     private static (bool Ok, string Msg) TryWriteRunKey()
     {
@@ -106,20 +147,5 @@ public static class AutostartService
         {
             return (false, ex.Message);
         }
-    }
-
-    private static (int ExitCode, string Output) RunSchtasks(string args)
-    {
-        var psi = new ProcessStartInfo("schtasks", args)
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 schtasks");
-        string output = (p.StandardOutput.ReadToEnd() + " " + p.StandardError.ReadToEnd()).Trim();
-        p.WaitForExit(10_000);
-        return (p.ExitCode, output);
     }
 }
