@@ -14,3 +14,8 @@ dist/config.json
 
 # 火山额度查询诊断落盘(exe 旁,含账户用量数据)
 volc-last-response.json
+
+# 本地工具缓存(mimosa 安全扫描/video2code/video-agent 插件)
+.mimosa/
+.v2c/
+.video_agent/
