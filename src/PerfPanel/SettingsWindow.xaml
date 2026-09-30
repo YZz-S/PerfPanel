@@ -150,6 +150,19 @@
             <StackPanel>
                 <TextBlock Text="界面" Style="{StaticResource SectionTitleStyle}"/>
                 <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="屏幕方向" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbOrientation" Grid.Column="1" HorizontalAlignment="Left" Width="180" Margin="12,0,0,0"
+                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
+                        <ComboBoxItem Content="自动(按副屏形状)" Tag="auto"/>
+                        <ComboBoxItem Content="竖屏 440×1920" Tag="portrait"/>
+                        <ComboBoxItem Content="横屏 1920×440" Tag="landscape"/>
+                    </ComboBox>
+                </Grid>
+                <Grid Margin="0,10,0,0">
                     <TextBlock Text="界面缩放" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
                     <TextBlock x:Name="lblScale" Text="100%" Style="{StaticResource LabelStyle}"
                                HorizontalAlignment="Right" FontFamily="Consolas"/>

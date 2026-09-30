@@ -6,6 +6,7 @@ namespace PerfPanel.Services;
 public sealed class AppConfig
 {
     public double Scale { get; set; } = 1.0;          // 界面缩放 0.8~1.3
+    public string Orientation { get; set; } = "auto"; // auto=按副屏形状自动选 | portrait | landscape
     public string City { get; set; } = "";            // 手动指定城市;空 = IP 自动定位
     public int WeatherRefreshMinutes { get; set; } = 30;
     public bool ShowWeather { get; set; } = true;

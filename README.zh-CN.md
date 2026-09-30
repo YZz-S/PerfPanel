@@ -1,8 +1,8 @@
-# PerfPanel — 440×1920 副屏性能监控面板
+# PerfPanel — 440×1920 / 1920×440 副屏性能监控面板
 
 [English](README.md) | **简体中文**
 
-为竖长条 USB-C 副屏(Windows 视频扩展屏)设计的暗色科技风硬件监控面板,WPF 原生实现。
+为竖长条/横长条 USB-C 副屏(Windows 视频扩展屏)设计的暗色科技风硬件监控面板,WPF 原生实现。竖版 440×1920 单列布局与横版 1920×440 双列布局共用同一套卡片组件,按副屏形状自动切换,也可手动指定。
 
 ## 运行效果图
 
@@ -18,6 +18,7 @@
 - **天气**:Open-Meteo 免费国际源(无需 key;可填高德 Key 切换国内稳定源),自动 IP 定位(可手动改 `weather.json`)
 - **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan 剩余额度与重置倒计时
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
+- **横竖屏布局**:横版 1920×440 时钟居中、CPU/GPU 左右分栏、内存+网络与天气+额度纵跨分格;`auto` 按副屏形状自动选,也可在设置、config.json 或命令行固定方向
 
 ## 运行
 
@@ -33,8 +34,9 @@ dotnet run --project src/PerfPanel -- --windowed  # 调试模式:主屏窗口化
 ### 运行构建产物
 
 ```
-PerfPanel.exe            # 全屏模式:自动定位 440×1920 副屏(无边框铺满,Esc 退出)
+PerfPanel.exe            # 全屏模式:自动定位 440×1920 / 1920×440 副屏(无边框铺满,Esc 退出)
 PerfPanel.exe --windowed # 调试模式:主屏窗口化,可随意缩放
+PerfPanel.exe --landscape / --portrait   # 强制横版 / 竖版(auto 按副屏形状自动选,默认)
 ```
 
 要求:.NET 8 桌面运行时(WindowsDesktop 8.0.x)。
@@ -115,7 +117,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 ```
 src/PerfPanel/
-├── MainWindow.xaml(.cs)        # 440×1920 竖版界面、多屏定位、1s 刷新循环
+├── MainWindow.xaml(.cs)        # 竖版 440×1920 / 横版 1920×440 双布局(共用卡片组件)、多屏定位、1s 刷新循环
 ├── Controls/HistoryGraph.cs    # StreamGeometry 自绘历史曲线(无图表库依赖)
 ├── Models/SensorSnapshot.cs    # 统一快照模型(字段可空=UI 自动隐藏)
 └── Services/

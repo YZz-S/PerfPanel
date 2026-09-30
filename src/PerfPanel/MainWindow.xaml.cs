@@ -11,6 +11,9 @@ using Color = System.Windows.Media.Color;
 
 namespace PerfPanel;
 
+/// <summary>面板方向:竖版 440×1920 / 横版 1920×440,两套骨架共用同一批卡片。</summary>
+public enum PanelOrientation { Portrait, Landscape }
+
 public partial class MainWindow : Window
 {
     private const int HistoryCap = 120;
@@ -23,6 +26,8 @@ public partial class MainWindow : Window
     private readonly HistoryBuffer _gpuHist = new(HistoryCap);
     private readonly HistoryBuffer _netHist = new(HistoryCap);
     private readonly bool _windowed;
+    private readonly PanelOrientation? _cliOrientation;
+    private PanelOrientation _orientation = PanelOrientation.Portrait;
     private bool _sampling;
     private int _lastPlanMinute = -1;
     private IntPtr _hwnd;
@@ -37,9 +42,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _windowed = Environment.GetCommandLineArgs().Any(a =>
+        var args = Environment.GetCommandLineArgs();
+        _windowed = args.Any(a =>
             a.Equals("--windowed", StringComparison.OrdinalIgnoreCase) ||
             a.Equals("-w", StringComparison.OrdinalIgnoreCase));
+        _cliOrientation =
+            args.Any(a => a.Equals("--landscape", StringComparison.OrdinalIgnoreCase)) ? PanelOrientation.Landscape :
+            args.Any(a => a.Equals("--portrait", StringComparison.OrdinalIgnoreCase)) ? PanelOrientation.Portrait : null;
 
         Loaded += OnLoaded;
         KeyDown += OnKeyDown;
@@ -71,16 +80,25 @@ public partial class MainWindow : Window
             ResizeMode = ResizeMode.CanResize;
             Title = "PerfPanel(调试窗口)";
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Width = 480;
-            Height = Math.Min(SystemParameters.WorkArea.Height - 40, 1500);
+            if (_orientation == PanelOrientation.Landscape)
+            {
+                Width = Math.Min(SystemParameters.WorkArea.Width - 40, 1700);
+                Height = Math.Min(SystemParameters.WorkArea.Height - 40, Width * 440.0 / 1920.0);
+            }
+            else
+            {
+                Width = 480;
+                Height = Math.Min(SystemParameters.WorkArea.Height - 40, 1500);
+            }
             return;
         }
 
+        bool land = _orientation == PanelOrientation.Landscape;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.Manual;
-        Width = 440;   // 临时尺寸,贴屏时被 SetWindowPos 覆盖
-        Height = 1920;
+        Width = land ? 1920 : 440;   // 临时尺寸,贴屏时被 SetWindowPos 覆盖
+        Height = land ? 440 : 1920;
         Topmost = true; // 盖住任务栏
         ShowInTaskbar = false;
         txtHint.Text = "拖动顶部移动 · 方向键微调 · Ctrl+方向键调整大小 · F 复位 · S 设置 · Esc 退出";
@@ -94,19 +112,182 @@ public partial class MainWindow : Window
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         ApplyScale(c.Scale);
+        UpdateLandscapeSpans();
     }
 
-    /// <summary>缩放:设计画布按 1/s 缩小,Viewbox 等比放大内容铺满屏幕。</summary>
+    /// <summary>缩放:设计画布按 1/s 缩小,Viewbox 等比放大内容铺满屏幕(竖 440×1920 / 横 1920×440)。</summary>
     public void ApplyScale(double s)
     {
         s = Math.Clamp(s, 0.8, 1.3);
-        layoutRoot.Width = 440 / s;
-        layoutRoot.Height = 1920 / s;
+        bool land = _orientation == PanelOrientation.Landscape;
+        layoutRoot.Width = (land ? 1920.0 : 440.0) / s;
+        layoutRoot.Height = (land ? 440.0 : 1920.0) / s;
+    }
+
+    // ---------- 横竖屏布局 ----------
+
+    /// <summary>解析方向并重排布局(方向选择:命令行 > config > 屏幕形状;设置窗口改动后也调用)。</summary>
+    public void ApplyOrientation()
+    {
+        _orientation = ResolveOrientation();
+        if (_orientation == PanelOrientation.Landscape) ArrangeLandscape();
+        else ArrangePortrait();
+        ApplyScale(Config.Current.Scale);
+        if (!_windowed && _hwnd != IntPtr.Zero) SnapToMonitor();
+    }
+
+    private PanelOrientation ResolveOrientation()
+    {
+        if (_cliOrientation is { } cli) return cli;
+        switch (Config.Current.Orientation)
+        {
+            case "portrait": return PanelOrientation.Portrait;
+            case "landscape": return PanelOrientation.Landscape;
+            default: // auto:全屏按目标副屏形状,窗口化保持竖版
+                if (_windowed) return PanelOrientation.Portrait;
+                var m = FindTargetMonitor(PanelOrientation.Portrait);
+                return m is { } && m.Width > m.Height ? PanelOrientation.Landscape : PanelOrientation.Portrait;
+        }
+    }
+
+    /// <summary>把元素从原容器摘出放进目标 Panel;已在目标容器则不动(幂等,可反复调用)。</summary>
+    private static void MoveTo(Panel parent, FrameworkElement el, int? index = null)
+    {
+        switch (el.Parent)
+        {
+            case ContentControl cc: cc.Content = null; break;
+            case Panel old when !ReferenceEquals(old, parent): old.Children.Remove(el); break;
+        }
+        if (ReferenceEquals(el.Parent, parent)) return;
+        if (index is { } i) parent.Children.Insert(i, el);
+        else parent.Children.Add(el);
+    }
+
+    /// <summary>把卡片挂进横版 ContentControl 单元格;已在则不动。传 null 清空。</summary>
+    private static void MoveTo(ContentControl cell, FrameworkElement? el)
+    {
+        if (el == null) { cell.Content = null; return; }
+        switch (el.Parent)
+        {
+            case ContentControl cc when !ReferenceEquals(cc, cell): cc.Content = null; break;
+            case Panel old: old.Children.Remove(el); break;
+        }
+        cell.Content = el;
+    }
+
+    private void ArrangePortrait()
+    {
+        landscapeRoot.Visibility = Visibility.Collapsed;
+        portraitRoot.Visibility = Visibility.Visible;
+
+        MoveTo(portRightCluster, btnGear);
+        MoveTo(portRightCluster, dotMode);
+        MoveTo(portRightCluster, txtMode);
+        MoveTo(portHeader, txtTime, 1);
+        MoveTo(portHeader, txtHint, 3);
+        MoveTo(portDateRow, txtDate);
+        MoveTo(portDateRow, txtUptime);
+        MoveTo(portFooter, txtFooter);
+
+        txtTime.FontSize = 58;
+        txtTime.Margin = new Thickness(0, 10, 0, 0);
+        txtHint.Margin = new Thickness(0, 8, 0, 0);
+        txtDate.Margin = new Thickness(0);
+        txtDate.VerticalAlignment = VerticalAlignment.Stretch;
+        txtUptime.Margin = new Thickness(0);
+        txtUptime.VerticalAlignment = VerticalAlignment.Stretch;
+        btnGear.Margin = new Thickness(0, 0, 12, 0);
+
+        foreach (var card in new FrameworkElement[] { cardCpu, cardGpu, cardMemory, cardNetwork, cardWeather, cardCodingPlan })
+        {
+            card.Margin = new Thickness(0, 0, 0, 12);
+            MoveTo(portCards, card);
+        }
+
+        cpuGraph.Height = 96;   // 竖版固定高;横版由 * 行自动填满
+        gpuGraph.Height = 96;
+        netGraph.Height = 64;
+        planScroll.Height = double.NaN;
+        txtCpuName.MaxWidth = 240;
+        txtGpuName.MaxWidth = 240;
+    }
+
+    private void ArrangeLandscape()
+    {
+        portraitRoot.Visibility = Visibility.Collapsed;
+        landscapeRoot.Visibility = Visibility.Visible;
+
+        MoveTo(landClockCell, txtTime);
+        MoveTo(landClockCell, txtHint);
+        MoveTo(landInfoCell, txtDate);
+        MoveTo(landInfoCell, txtUptime);
+        MoveTo(landInfoCell, btnGear);
+        MoveTo(landInfoCell, dotMode);
+        MoveTo(landInfoCell, txtMode);
+        MoveTo(landFooter, txtFooter);
+
+        txtTime.FontSize = 44;
+        txtTime.Margin = new Thickness(0);
+        txtHint.Margin = new Thickness(0, 2, 0, 0);
+        txtDate.Margin = new Thickness(0);
+        txtDate.VerticalAlignment = VerticalAlignment.Center;
+        txtUptime.Margin = new Thickness(18, 0, 0, 0);
+        txtUptime.VerticalAlignment = VerticalAlignment.Center;
+        btnGear.Margin = new Thickness(24, 0, 0, 0);
+
+        cpuGraph.Height = double.NaN; // 曲线在 * 行自动填满卡片剩余空间
+        gpuGraph.Height = double.NaN;
+        netGraph.Height = double.NaN;
+        planScroll.Height = 93;
+        txtCpuName.MaxWidth = 330;
+        txtGpuName.MaxWidth = 330;
+
+        MoveTo(landCpuCell, cardCpu);
+        cardCpu.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landGpuCell, cardGpu);
+        cardGpu.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landMemCell, cardMemory);
+        cardMemory.Margin = new Thickness(0, 0, 12, 12);
+        MoveTo(landNetCell, cardNetwork);
+        cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+
+        // 天气/额度占右列上下两格,空缺时另一半纵跨两行
+        UpdateLandscapeSpans();
+    }
+
+    /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行。竖版无格位概念,直接跳过。</summary>
+    private void UpdateLandscapeSpans()
+    {
+        if (_orientation != PanelOrientation.Landscape) return;
+        bool wx = cardWeather.Visibility == Visibility.Visible;
+        bool plan = cardCodingPlan.Visibility == Visibility.Visible;
+        Grid.SetRowSpan(landWxCell, 1);
+        Grid.SetRowSpan(landPlanCell, 1);
+        if (wx && plan)
+        {
+            MoveTo(landWxCell, cardWeather);
+            cardWeather.Margin = new Thickness(0, 0, 12, 12);
+            MoveTo(landPlanCell, cardCodingPlan);
+            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
+        }
+        else if (wx)
+        {
+            MoveTo(landWxCell, cardWeather);
+            cardWeather.Margin = new Thickness(0, 0, 12, 0);
+            Grid.SetRowSpan(landWxCell, 2);
+        }
+        else if (plan)
+        {
+            MoveTo(landPlanCell, cardCodingPlan);
+            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
+            Grid.SetRowSpan(landPlanCell, 2);
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        ApplyOrientation();
         if (!_windowed)
         {
             _hwnd = new WindowInteropHelper(this).Handle;
@@ -117,18 +298,21 @@ public partial class MainWindow : Window
     /// <summary>物理像素精确铺满目标副屏(避开 WPF 逻辑像素在混合 DPI 下的偏移)。</summary>
     private void SnapToMonitor()
     {
-        var target = FindTargetMonitor();
+        var target = FindTargetMonitor(_orientation);
         if (target == null) return;
         const uint swpShowWindow = 0x0040;
         MonitorHelper.SetWindowPos(_hwnd, new IntPtr(-1) /*HWND_TOPMOST*/,
             target.Left, target.Top, target.Width, target.Height, swpShowWindow);
     }
 
-    private static MonitorHelper.MonitorBounds? FindTargetMonitor()
+    /// <summary>优先选与当前方向同形状的副屏(440×1920 / 1920×440),其次任意副屏。</summary>
+    private static MonitorHelper.MonitorBounds? FindTargetMonitor(PanelOrientation orientation)
     {
         var monitors = MonitorHelper.GetAll();
-        return monitors.FirstOrDefault(m => m.Width == 440 && m.Height == 1920)
-            ?? monitors.FirstOrDefault(m => m.Width == 1920 && m.Height == 440)
+        MonitorHelper.MonitorBounds? Exact(bool landscape) => monitors.FirstOrDefault(m =>
+            landscape ? m.Width == 1920 && m.Height == 440 : m.Width == 440 && m.Height == 1920);
+        return Exact(orientation == PanelOrientation.Landscape)
+            ?? Exact(orientation == PanelOrientation.Portrait)
             ?? monitors.FirstOrDefault(m => !m.Primary)
             ?? monitors.FirstOrDefault();
     }
@@ -302,11 +486,13 @@ public partial class MainWindow : Window
         if (!Config.Current.ShowWeather)
         {
             cardWeather.Visibility = Visibility.Collapsed;
+            UpdateLandscapeSpans();
             return;
         }
         var w = _weather.Current;
         if (w == null) return;
         cardWeather.Visibility = Visibility.Visible;
+        UpdateLandscapeSpans();
         txtWeatherTemp.Text = $"{w.TempC:F0}°";
         txtWeatherDesc.Text = w.HumidityPct is { } h ? $"{w.Desc} · 湿度{h}%" : w.Desc;
         txtWeatherRange.Text = $"H {w.TMax:F0}°  L {w.TMin:F0}°";
@@ -373,9 +559,11 @@ public partial class MainWindow : Window
         if (!c.ShowCodingPlan || !_codingPlan.AnyKeyConfigured)
         {
             cardCodingPlan.Visibility = Visibility.Collapsed;
+            UpdateLandscapeSpans();
             return;
         }
         cardCodingPlan.Visibility = Visibility.Visible;
+        UpdateLandscapeSpans();
 
         if (_codingPlan.Current.Count == 0)
         {

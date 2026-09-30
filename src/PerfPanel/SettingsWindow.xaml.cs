@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
         txtZpKey.Text = c.ZhipuKey;
         txtVolcAk.Text = c.VolcAk;
         txtVolcSk.Text = c.VolcSk;
+        SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
         lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
@@ -91,6 +92,16 @@ public partial class SettingsWindow : Window
             {
                 Config.Current.WeatherRefreshMinutes = min;
                 Config.Save();
+            }
+        };
+
+        cmbOrientation.SelectionChanged += (_, _) =>
+        {
+            if (cmbOrientation.SelectedItem is ComboBoxItem { Tag: string tag })
+            {
+                Config.Current.Orientation = tag;
+                Config.Save();
+                _main.ApplyOrientation();
             }
         };
 
@@ -225,6 +236,19 @@ public partial class SettingsWindow : Window
             }
         }
         cmbRefresh.SelectedIndex = 2; // 默认 30
+    }
+
+    private void SelectOrientation(string mode)
+    {
+        foreach (ComboBoxItem item in cmbOrientation.Items)
+        {
+            if (item.Tag is string tag && tag == mode)
+            {
+                cmbOrientation.SelectedItem = item;
+                return;
+            }
+        }
+        cmbOrientation.SelectedIndex = 0; // 默认 auto
     }
 
     protected override void OnClosed(EventArgs e)

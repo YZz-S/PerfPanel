@@ -1,8 +1,8 @@
-# PerfPanel — 440×1920 Secondary-Screen Performance Monitor
+# PerfPanel — 440×1920 / 1920×440 Secondary-Screen Performance Monitor
 
 **English** | [简体中文](README.zh-CN.md)
 
-A dark, tech-style hardware monitoring panel built natively in WPF, designed for tall USB-C portable monitors used as extended displays on Windows.
+A dark, tech-style hardware monitoring panel built natively in WPF, designed for tall or wide USB-C portable monitors used as extended displays on Windows. The portrait 440×1920 single-column layout and the landscape 1920×440 two-column layout share the same card components, auto-switch by the display's shape, and can also be set manually.
 
 ## Screenshot
 
@@ -18,6 +18,7 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
 - **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan remaining quota with reset countdowns
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
+- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered, CPU/GPU take the left half side by side, and RAM+network / weather+quota stack in the right columns; `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
 
 ## Run
 
@@ -33,8 +34,9 @@ Requires the .NET SDK 8.0+ (newer SDKs can still build the net8.0 target). Note 
 ### Built binary
 
 ```
-PerfPanel.exe            # fullscreen: locates the 440×1920 secondary display (borderless fill, Esc to quit)
+PerfPanel.exe            # fullscreen: locates the 440×1920 / 1920×440 secondary display (borderless fill, Esc to quit)
 PerfPanel.exe --windowed # debug: windowed on primary screen, freely resizable
+PerfPanel.exe --landscape / --portrait   # force landscape / portrait (auto = by display shape, the default)
 ```
 
 Requires the .NET 8 desktop runtime (WindowsDesktop 8.0.x).
@@ -115,7 +117,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 ```
 src/PerfPanel/
-├── MainWindow.xaml(.cs)        # 440×1920 vertical UI, multi-monitor placement, 1s refresh loop
+├── MainWindow.xaml(.cs)        # portrait 440×1920 / landscape 1920×440 dual layout (shared cards), multi-monitor placement, 1s refresh loop
 ├── Controls/HistoryGraph.cs    # StreamGeometry hand-drawn history graphs (no chart library)
 ├── Models/SensorSnapshot.cs    # unified snapshot model (nullable fields = auto-hidden in UI)
 └── Services/

@@ -9,263 +9,358 @@
 
     <Viewbox Stretch="Uniform">
         <Grid x:Name="layoutRoot" Width="440" Height="1920">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
 
-            <!-- ======================= 头部:品牌 / 时钟 ======================= -->
-            <StackPanel Grid.Row="0" Margin="20,18,20,0" Background="Transparent"
-                        MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
-                <Grid>
-                    <TextBlock Text="PERF PANEL" FontSize="15" FontWeight="Bold">
-                        <TextBlock.Foreground>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                <GradientStop Color="#22D3EE" Offset="0"/>
-                                <GradientStop Color="#A78BFA" Offset="1"/>
-                            </LinearGradientBrush>
-                        </TextBlock.Foreground>
-                    </TextBlock>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock x:Name="btnGear" Text="⚙" FontSize="15" Foreground="#8FA3C8" Cursor="Hand"
-                                   Margin="0,0,12,0" VerticalAlignment="Center" ToolTip="设置(S)"
-                                   MouseLeftButtonDown="Gear_OnClick"/>
-                        <Ellipse x:Name="dotMode" Width="7" Height="7" Fill="#FBBF24" Margin="0,0,6,0"
-                                 VerticalAlignment="Center"/>
-                        <TextBlock x:Name="txtMode" Text="INIT" FontSize="11" Foreground="#8FA3C8"
-                                   FontFamily="Consolas" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Grid>
+            <!-- ================================================================
+                 竖版 440×1920(卡片在此声明,横竖两套骨架共用,切换时由代码重新挂载)
+                 ================================================================ -->
+            <Grid x:Name="portraitRoot">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <TextBlock x:Name="txtTime" Text="--:--:--" FontSize="58" FontWeight="Bold"
-                           Foreground="#EAF2FF" FontFamily="Consolas, Cascadia Mono"
-                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
-                <Grid Margin="2,6,2,0">
-                    <TextBlock x:Name="txtDate" Text="" FontSize="14" Foreground="#8FA3C8"/>
-                    <TextBlock x:Name="txtUptime" Text="" FontSize="13" Foreground="#55648A"
-                               HorizontalAlignment="Right"/>
-                </Grid>
-                <TextBlock x:Name="txtHint" Text="" FontSize="10" Foreground="#3D4B6E"
-                           HorizontalAlignment="Center" Margin="0,8,0,0"/>
-            </StackPanel>
-
-            <!-- ======================= 中部:数据卡片 ======================= -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,14,16,0">
-                <StackPanel>
-
-                    <!-- CPU -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="CPU" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock x:Name="txtCpuName" Text="" FontSize="11" Foreground="#55648A"
-                                               Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
-                                </StackPanel>
-                                <TextBlock x:Name="txtCpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
-                            </Grid>
-
-                            <Border Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
-                                <Border x:Name="barCpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
-                            </Border>
-
-                            <ctl:HistoryGraph x:Name="cpuGraph" Height="96" Margin="0,12,0,4"/>
-
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" MinHeight="46"/><RowDefinition Height="Auto" MinHeight="46"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel x:Name="rowCpuFreq" Grid.Row="0" Grid.Column="0">
-                                    <TextBlock Text="频率" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtCpuFreq" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                                <StackPanel x:Name="rowCpuTemp" Grid.Row="0" Grid.Column="1">
-                                    <TextBlock Text="温度" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtCpuTemp" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                                <StackPanel x:Name="rowCpuPower" Grid.Row="1" Grid.Column="0">
-                                    <TextBlock Text="功耗" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtCpuPower" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                                <StackPanel x:Name="rowCpuFan" Grid.Row="1" Grid.Column="1">
-                                    <TextBlock Text="风扇" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtCpuFan" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                            </Grid>
+                <!-- ======================= 头部:品牌 / 时钟 ======================= -->
+                <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,18,20,0" Background="Transparent"
+                            MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
+                    <Grid>
+                        <TextBlock Text="PERF PANEL" FontSize="15" FontWeight="Bold">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#22D3EE" Offset="0"/>
+                                    <GradientStop Color="#A78BFA" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                        <StackPanel x:Name="portRightCluster" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock x:Name="btnGear" Text="⚙" FontSize="15" Foreground="#8FA3C8" Cursor="Hand"
+                                       Margin="0,0,12,0" VerticalAlignment="Center" ToolTip="设置(S)"
+                                       MouseLeftButtonDown="Gear_OnClick"/>
+                            <Ellipse x:Name="dotMode" Width="7" Height="7" Fill="#FBBF24" Margin="0,0,6,0"
+                                     VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtMode" Text="INIT" FontSize="11" Foreground="#8FA3C8"
+                                       FontFamily="Consolas" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </Border>
+                    </Grid>
 
-                    <!-- GPU -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="GPU" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock x:Name="txtGpuName" Text="" FontSize="11" Foreground="#55648A"
-                                               Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
-                                </StackPanel>
-                                <TextBlock x:Name="txtGpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
-                            </Grid>
-
-                            <Border Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
-                                <Border x:Name="barGpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
-                            </Border>
-
-                            <ctl:HistoryGraph x:Name="gpuGraph" Height="96" Margin="0,12,0,4" LineColor="#A78BFA"/>
-
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" MinHeight="46"/><RowDefinition Height="Auto" MinHeight="46"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel x:Name="rowGpuVram" Grid.Row="0" Grid.Column="0">
-                                    <TextBlock Text="显存" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtGpuVram" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                    <Border Style="{StaticResource TrackStyle}" Height="4" Margin="0,4,12,0">
-                                        <Border x:Name="barGpuVramFill" Style="{StaticResource FillStyle}"
-                                                HorizontalAlignment="Left"/>
-                                    </Border>
-                                </StackPanel>
-                                <StackPanel x:Name="rowGpuTemp" Grid.Row="0" Grid.Column="1">
-                                    <TextBlock Text="温度" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtGpuTemp" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                                <StackPanel x:Name="rowGpuPower" Grid.Row="1" Grid.Column="0">
-                                    <TextBlock Text="功耗" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtGpuPower" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                                <StackPanel x:Name="rowGpuFan" Grid.Row="1" Grid.Column="1">
-                                    <TextBlock Text="风扇" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtGpuFan" Text="--" Style="{StaticResource RowValueStyle}"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 内存 -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="MEMORY" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock x:Name="txtRamPct" Text="--" Style="{StaticResource MidValueStyle}"/>
-                            </Grid>
-                            <Border Style="{StaticResource TrackStyle}" Height="10" Margin="0,10,0,0">
-                                <Border x:Name="barRamFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
-                            </Border>
-                            <TextBlock x:Name="txtRamDetail" Text="-- GB" HorizontalAlignment="Right"
-                                       FontFamily="Consolas" FontSize="13" Foreground="#8FA3C8" Margin="0,6,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 网络 -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="NETWORK" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock x:Name="txtNetIf" Text="" FontSize="10" Foreground="#55648A"
-                                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                           TextTrimming="CharacterEllipsis" MaxWidth="200"/>
-                            </Grid>
-
-                            <Grid Margin="0,10,0,0">
-                                <StackPanel>
-                                    <TextBlock Text="▼ DOWN" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtNetDown" Text="--" FontSize="30" FontWeight="Bold"
-                                               Foreground="#22D3EE" FontFamily="Consolas" Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <StackPanel HorizontalAlignment="Right">
-                                    <TextBlock Text="▲ UP" Style="{StaticResource RowLabelStyle}"/>
-                                    <TextBlock x:Name="txtNetUp" Text="--" FontSize="22" FontWeight="Bold"
-                                               Foreground="#A78BFA" FontFamily="Consolas" Margin="0,6,0,0"
-                                               HorizontalAlignment="Right"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <ctl:HistoryGraph x:Name="netGraph" Height="64" Margin="0,10,0,2" AutoScale="True"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 天气 -->
-                    <Border x:Name="cardWeather" Style="{StaticResource CardStyle}" Visibility="Collapsed">
-                        <StackPanel>
-                        <Grid>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="txtWeatherTemp" Text="--°" FontSize="34" FontWeight="Bold"
-                                           Foreground="#EAF2FF" FontFamily="Consolas" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="txtWeatherDesc" Text="" FontSize="15" Foreground="#8FA3C8"
-                                           VerticalAlignment="Center" Margin="10,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <TextBlock x:Name="txtWeatherRange" Text="" FontSize="12" Foreground="#8FA3C8"
-                                           FontFamily="Consolas" HorizontalAlignment="Right"/>
-                                <TextBlock x:Name="txtWeatherCity" Text="" FontSize="11" Foreground="#55648A"
-                                           HorizontalAlignment="Right" Margin="0,3,0,0"/>
-                            </StackPanel>
-                        </Grid>
-
-                        <!-- 风 / 紫外线 / 空气质量 -->
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="风速" Style="{StaticResource RowLabelStyle}"/>
-                                <TextBlock x:Name="txtWind" Text="--" FontSize="15" FontWeight="Bold"
-                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="紫外线" Style="{StaticResource RowLabelStyle}"/>
-                                <TextBlock x:Name="txtUv" Text="--" FontSize="15" FontWeight="Bold"
-                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
-                            </StackPanel>
-                            <StackPanel x:Name="cellAqi" Grid.Column="2">
-                                <TextBlock Text="空气质量" Style="{StaticResource RowLabelStyle}"/>
-                                <TextBlock x:Name="txtAqi" Text="--" FontSize="15" FontWeight="Bold"
-                                           FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
-                            </StackPanel>
-                        </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Coding Plan 额度 -->
-                    <Border x:Name="cardCodingPlan" Style="{StaticResource CardStyle}" Visibility="Collapsed">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock x:Name="txtPlanRefresh" Text="" FontSize="10" Foreground="#55648A"
-                                           HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
-                            </Grid>
-                            <StackPanel x:Name="planRows" Margin="0,10,0,0"/>
-                        </StackPanel>
-                    </Border>
-
+                    <TextBlock x:Name="txtTime" Text="--:--:--" FontSize="58" FontWeight="Bold"
+                               Foreground="#EAF2FF" FontFamily="Consolas, Cascadia Mono"
+                               HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                    <Grid x:Name="portDateRow" Margin="2,6,2,0">
+                        <TextBlock x:Name="txtDate" Text="" FontSize="14" Foreground="#8FA3C8"/>
+                        <TextBlock x:Name="txtUptime" Text="" FontSize="13" Foreground="#55648A"
+                                   HorizontalAlignment="Right"/>
+                    </Grid>
+                    <TextBlock x:Name="txtHint" Text="" FontSize="10" Foreground="#3D4B6E"
+                               HorizontalAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
-            </ScrollViewer>
 
-            <!-- ======================= 底部装饰 ======================= -->
-            <StackPanel Grid.Row="2" Margin="20,10,20,16">
-                <Border Height="1">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="#00000000" Offset="0"/>
-                            <GradientStop Color="#22D3EE" Offset="0.5"/>
-                            <GradientStop Color="#00000000" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
-                <TextBlock x:Name="txtFooter" Text="SYSTEM MONITOR · LOCAL" FontSize="10" Foreground="#3D4B6E"
-                           HorizontalAlignment="Center" Margin="0,8,0,0" FontFamily="Consolas"/>
-            </StackPanel>
+                <!-- ======================= 中部:数据卡片 ======================= -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,14,16,0">
+                    <StackPanel x:Name="portCards">
+
+                        <!-- CPU -->
+                        <Border x:Name="cardCpu" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <StackPanel>
+                                        <TextBlock Text="CPU" Style="{StaticResource SectionTitleStyle}"/>
+                                        <TextBlock x:Name="txtCpuName" Text="" FontSize="11" Foreground="#55648A"
+                                                   Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="txtCpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
+                                </Grid>
+
+                                <Border Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
+                                    <Border x:Name="barCpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
+                                </Border>
+
+                                <ctl:HistoryGraph Grid.Row="2" x:Name="cpuGraph" Height="96" Margin="0,12,0,4"/>
+
+                                <Grid Grid.Row="3" Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" MinHeight="46"/><RowDefinition Height="Auto" MinHeight="46"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel x:Name="rowCpuFreq" Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="频率" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtCpuFreq" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowCpuTemp" Grid.Row="0" Grid.Column="1">
+                                        <TextBlock Text="温度" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtCpuTemp" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowCpuPower" Grid.Row="1" Grid.Column="0">
+                                        <TextBlock Text="功耗" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtCpuPower" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowCpuFan" Grid.Row="1" Grid.Column="1">
+                                        <TextBlock Text="风扇" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtCpuFan" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                </Grid>
+                        </Border>
+
+                        <!-- GPU -->
+                        <Border x:Name="cardGpu" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <StackPanel>
+                                        <TextBlock Text="GPU" Style="{StaticResource SectionTitleStyle}"/>
+                                        <TextBlock x:Name="txtGpuName" Text="" FontSize="11" Foreground="#55648A"
+                                                   Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="txtGpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
+                                </Grid>
+
+                                <Border Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
+                                    <Border x:Name="barGpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
+                                </Border>
+
+                                <ctl:HistoryGraph Grid.Row="2" x:Name="gpuGraph" Height="96" Margin="0,12,0,4" LineColor="#A78BFA"/>
+
+                                <Grid Grid.Row="3" Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" MinHeight="46"/><RowDefinition Height="Auto" MinHeight="46"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel x:Name="rowGpuVram" Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="显存" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtGpuVram" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                        <Border Style="{StaticResource TrackStyle}" Height="4" Margin="0,4,12,0">
+                                            <Border x:Name="barGpuVramFill" Style="{StaticResource FillStyle}"
+                                                    HorizontalAlignment="Left"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowGpuTemp" Grid.Row="0" Grid.Column="1">
+                                        <TextBlock Text="温度" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtGpuTemp" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowGpuPower" Grid.Row="1" Grid.Column="0">
+                                        <TextBlock Text="功耗" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtGpuPower" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="rowGpuFan" Grid.Row="1" Grid.Column="1">
+                                        <TextBlock Text="风扇" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtGpuFan" Text="--" Style="{StaticResource RowValueStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                </Grid>
+                        </Border>
+
+                        <!-- 内存 -->
+                        <Border x:Name="cardMemory" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="MEMORY" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtRamPct" Text="--" Style="{StaticResource MidValueStyle}"/>
+                                </Grid>
+                                <Border Style="{StaticResource TrackStyle}" Height="10" Margin="0,10,0,0">
+                                    <Border x:Name="barRamFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
+                                </Border>
+                                <TextBlock x:Name="txtRamDetail" Text="-- GB" HorizontalAlignment="Right"
+                                           FontFamily="Consolas" FontSize="13" Foreground="#8FA3C8" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 网络 -->
+                        <Border x:Name="cardNetwork" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <TextBlock Text="NETWORK" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtNetIf" Text="" FontSize="10" Foreground="#55648A"
+                                               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                                </Grid>
+
+                                <Grid Grid.Row="1" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="▼ DOWN" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtNetDown" Text="--" FontSize="30" FontWeight="Bold"
+                                                   Foreground="#22D3EE" FontFamily="Consolas" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Right">
+                                        <TextBlock Text="▲ UP" Style="{StaticResource RowLabelStyle}"/>
+                                        <TextBlock x:Name="txtNetUp" Text="--" FontSize="22" FontWeight="Bold"
+                                                   Foreground="#A78BFA" FontFamily="Consolas" Margin="0,6,0,0"
+                                                   HorizontalAlignment="Right"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <ctl:HistoryGraph Grid.Row="2" x:Name="netGraph" Height="64" Margin="0,10,0,2" AutoScale="True"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- 天气 -->
+                        <Border x:Name="cardWeather" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                            <StackPanel>
+                            <Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="txtWeatherTemp" Text="--°" FontSize="34" FontWeight="Bold"
+                                               Foreground="#EAF2FF" FontFamily="Consolas" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="txtWeatherDesc" Text="" FontSize="15" Foreground="#8FA3C8"
+                                               VerticalAlignment="Center" Margin="10,4,0,0"/>
+                                </StackPanel>
+                                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock x:Name="txtWeatherRange" Text="" FontSize="12" Foreground="#8FA3C8"
+                                               FontFamily="Consolas" HorizontalAlignment="Right"/>
+                                    <TextBlock x:Name="txtWeatherCity" Text="" FontSize="11" Foreground="#55648A"
+                                               HorizontalAlignment="Right" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 风 / 紫外线 / 空气质量 -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="风速" Style="{StaticResource RowLabelStyle}"/>
+                                    <TextBlock x:Name="txtWind" Text="--" FontSize="15" FontWeight="Bold"
+                                               FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="紫外线" Style="{StaticResource RowLabelStyle}"/>
+                                    <TextBlock x:Name="txtUv" Text="--" FontSize="15" FontWeight="Bold"
+                                               FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel x:Name="cellAqi" Grid.Column="2">
+                                    <TextBlock Text="空气质量" Style="{StaticResource RowLabelStyle}"/>
+                                    <TextBlock x:Name="txtAqi" Text="--" FontSize="15" FontWeight="Bold"
+                                               FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Coding Plan 额度 -->
+                        <Border x:Name="cardCodingPlan" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtPlanRefresh" Text="" FontSize="10" Foreground="#55648A"
+                                               HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
+                                </Grid>
+                                <ScrollViewer x:Name="planScroll" VerticalScrollBarVisibility="Hidden">
+                                    <StackPanel x:Name="planRows" Margin="0,10,0,0"/>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ======================= 底部装饰 ======================= -->
+                <StackPanel x:Name="portFooter" Grid.Row="2" Margin="20,10,20,16">
+                    <Border Height="1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00000000" Offset="0"/>
+                                <GradientStop Color="#22D3EE" Offset="0.5"/>
+                                <GradientStop Color="#00000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <TextBlock x:Name="txtFooter" Text="SYSTEM MONITOR · LOCAL" FontSize="10" Foreground="#3D4B6E"
+                               HorizontalAlignment="Center" Margin="0,8,0,0" FontFamily="Consolas"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- ================================================================
+                 横版 1920×440:时钟居中,CPU/GPU 左右分栏,内存+网络、天气+额度纵跨两格
+                 (共用竖版声明的卡片与文字元素,切换时由代码挂载)
+                 ================================================================ -->
+            <Grid x:Name="landscapeRoot" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 头部:品牌 | 时钟(真居中,叠放层) | 日期/开机/模式 -->
+                <Grid Grid.Row="0" Margin="20,8,20,2" Background="Transparent"
+                      MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
+                    <Grid>
+                        <TextBlock Text="PERF PANEL" FontSize="15" FontWeight="Bold" VerticalAlignment="Center">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#22D3EE" Offset="0"/>
+                                    <GradientStop Color="#A78BFA" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                        <StackPanel x:Name="landInfoCell" HorizontalAlignment="Right" Orientation="Horizontal"
+                                    VerticalAlignment="Center"/>
+                    </Grid>
+                    <StackPanel x:Name="landClockCell" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- 卡片区:左 CPU 全高 | GPU 全高 | 中列 内存/网络 | 右列 天气/额度 -->
+                <Grid Grid.Row="1" Margin="16,6,16,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26*"/>
+                        <ColumnDefinition Width="26*"/>
+                        <ColumnDefinition Width="19*"/>
+                        <ColumnDefinition Width="29*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <ContentControl x:Name="landCpuCell" Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landGpuCell" Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landMemCell" Grid.Column="2" Grid.Row="0"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landNetCell" Grid.Column="2" Grid.Row="1"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landWxCell" Grid.Column="3" Grid.Row="0"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landPlanCell" Grid.Column="3" Grid.Row="1"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                </Grid>
+
+                <!-- 底部装饰 -->
+                <StackPanel x:Name="landFooter" Grid.Row="2" Margin="20,2,20,8">
+                    <Border Height="1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00000000" Offset="0"/>
+                                <GradientStop Color="#22D3EE" Offset="0.5"/>
+                                <GradientStop Color="#00000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Viewbox>
 </Window>
