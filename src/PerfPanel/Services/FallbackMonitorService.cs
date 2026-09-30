@@ -126,7 +126,7 @@ public sealed class FallbackMonitorService : IDisposable
         return null;
     }
 
-    /// <summary>CPU 有效频率(GHz):PercentProcessorPerformance × 标称频率,近似值。</summary>
+    /// <summary>CPU 有效频率(GHz):PercentProcessorPerformance × 标称频率;性能百分比可超 100(睿频),不封顶。</summary>
     public float? GetCpuFreqGHz()
     {
         if (!_wmiOk || _cpuMaxClockGHz <= 0) return null;
@@ -137,7 +137,8 @@ public sealed class FallbackMonitorService : IDisposable
             foreach (var mo in s.Get())
             {
                 var pct = Convert.ToSingle(mo["PercentProcessorPerformance"]);
-                return _cpuMaxClockGHz * Math.Min(pct, 100f) / 100f;
+                var ghz = _cpuMaxClockGHz * Math.Clamp(pct, 1f, 400f) / 100f;
+                return ghz is > 0.1f and < 8f ? ghz : null;
             }
         }
         catch { }

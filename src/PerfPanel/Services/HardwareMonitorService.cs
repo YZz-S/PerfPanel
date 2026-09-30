@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using LibreHardwareMonitor.Hardware;
 using PerfPanel.Models;
 
@@ -30,7 +31,8 @@ public sealed class HardwareMonitorService : IDisposable
     };
     private readonly UpdateVisitor _visitor = new();
 
-    private ISensor? _cpuLoad, _cpuTemp, _cpuPower, _cpuFan, _cpuClock;
+    private ISensor? _cpuLoad, _cpuTemp, _cpuPower, _cpuFan;
+    private ISensor[] _cpuClocks = [];
     private ISensor? _gpuLoad, _gpuTemp, _gpuPower, _gpuFan, _gpuVramUsed, _gpuVramTotal;
     private ISensor? _ramLoad, _ramUsedGb;
     private bool _gpuFanPercent;
@@ -89,7 +91,7 @@ public sealed class HardwareMonitorService : IDisposable
                 foreach (var sub in hw.SubHardware)
                 {
                     sub.Update();
-                    _cpuFan ??= Find(sub, SensorType.Fan, ["CPU Fan", "Fan #1", "Fan1"]);
+                    PickCpuFan(sub);
                 }
             }
         }
@@ -100,10 +102,10 @@ public sealed class HardwareMonitorService : IDisposable
             if (hw.HardwareType != HardwareType.Cpu) continue;
             _cpuLoad ??= Find(hw, SensorType.Load, ["CPU Total"]);
             _cpuPower ??= Find(hw, SensorType.Power, ["CPU Package", "Package"]);
-            _cpuClock = hw.Sensors
-                .Where(s => s.SensorType == SensorType.Clock && s.Name.StartsWith("CPU Core") && s.Value > 0)
-                .OrderByDescending(s => s.Value)
-                .FirstOrDefault();
+            // 核心时钟:Intel 命名 "CPU Core #N",AMD 命名 "Core #N";留全量引用,Fill 时取最大值
+            _cpuClocks = hw.Sensors
+                .Where(s => s.SensorType == SensorType.Clock && CoreClockRegex.IsMatch(s.Name))
+                .ToArray();
             _cpuTemp ??= hw.Sensors
                 .Where(s => s.SensorType == SensorType.Temperature && s.Value > 0)
                 .OrderBy(s => s.Index)
@@ -122,8 +124,14 @@ public sealed class HardwareMonitorService : IDisposable
         {
             GpuName = gpu.Name;
             _gpuLoad ??= Find(gpu, SensorType.Load, ["GPU Core", "D3D 3D"]);
-            _gpuTemp ??= Find(gpu, SensorType.Temperature, ["GPU Core", "GPU"]);
-            _gpuPower = Find(gpu, SensorType.Power, ["GPU Package", "Power", "Board Power", "GPU Power"]) ?? _gpuPower;
+            _gpuTemp ??= Find(gpu, SensorType.Temperature, ["GPU Core", "GPU Package"]);
+            // 各家核显/独显温度名不统一(如 AMD 核显只有 "GPU VR SoC"),按核心/SoC 优先兜底选一路
+            _gpuTemp ??= gpu.Sensors
+                .Where(s => s.SensorType == SensorType.Temperature)
+                .OrderByDescending(s => GpuTempRank(s.Name))
+                .ThenBy(s => s.Index)
+                .FirstOrDefault();
+            _gpuPower = Find(gpu, SensorType.Power, ["GPU Package", "GPU Power", "GPU Board Power", "GPU Core"]) ?? _gpuPower;
             foreach (var s in gpu.Sensors)
             {
                 var n = s.Name.ToLowerInvariant();
@@ -163,23 +171,55 @@ public sealed class HardwareMonitorService : IDisposable
         return null;
     }
 
+    /// <summary>核心时钟名:Intel "CPU Core #N" / AMD "Core #N"(排除 Max/有效时钟等衍生名)。</summary>
+    private static readonly Regex CoreClockRegex = new(@"^(CPU )?Core #\d+$", RegexOptions.Compiled);
+
+    /// <summary>主板 SuperIO 芯片里挑 CPU 风扇:优先名字含 CPU,其次 Fan #1,再次任何有读数的。</summary>
+    private void PickCpuFan(IHardware sub)
+    {
+        if (_cpuFan != null) return;
+        var fans = sub.Sensors.Where(s => s.SensorType == SensorType.Fan).ToList();
+        if (fans.Count == 0) return;
+        _cpuFan =
+            fans.FirstOrDefault(s => s.Name.Contains("cpu", StringComparison.OrdinalIgnoreCase) && s.Value >= 100) ??
+            fans.FirstOrDefault(s => s.Name.Equals("Fan #1", StringComparison.OrdinalIgnoreCase)) ??
+            fans.FirstOrDefault(s => s.Value >= 100) ??
+            fans.FirstOrDefault(s => s.Name.Contains("cpu", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>GPU 温度兜底排序:核心/封装 > SoC > 其他(AMD 核显常只暴露 "GPU VR SoC")。</summary>
+    private static int GpuTempRank(string name)
+    {
+        var n = name.ToLowerInvariant();
+        if (n.Contains("core") || n.Contains("package")) return 3;
+        if (n.Contains("soc")) return 2;
+        return 1;
+    }
+
     public void Fill(SensorSnapshot snap)
     {
         _computer.Accept(_visitor);
 
         snap.CpuName = CpuName;
         snap.GpuName = GpuName;
-        // FULL = 至少一路真实温度(管理员 + 驱动 OK),否则降级提示
-        snap.FullSensorMode = snap.CpuTemp != null || snap.GpuTemp != null;
 
         snap.CpuLoad = _cpuLoad?.Value;
         snap.CpuTemp = Sanitize(_cpuTemp?.Value);
+        snap.GpuTemp = Sanitize(_gpuTemp?.Value);
+        // FULL = 至少一路真实温度(管理员 + 驱动 OK),否则降级提示
+        // (必须在温度赋值之后判定:快照每次新建,先判恒为 BASIC)
+        snap.FullSensorMode = snap.CpuTemp != null || snap.GpuTemp != null;
+
         snap.CpuPower = Sanitize(_cpuPower?.Value);
         snap.CpuFan = _cpuFan?.Value is >= 100 ? _cpuFan!.Value : null;
-        snap.CpuFreq = _cpuClock?.Value is > 0 ? _cpuClock!.Value / 1000f : null;
+        // 多核取最大时钟(睿频时单核领先),LHM 读不出(部分新平台为 NaN)时留给 WMI 回退
+        float? maxClock = null;
+        foreach (var s in _cpuClocks)
+            if (s.Value is > 0 && (maxClock is null || s.Value > maxClock))
+                maxClock = s.Value;
+        snap.CpuFreq = maxClock is > 0 ? maxClock / 1000f : null;
 
         snap.GpuLoad = _gpuLoad?.Value;
-        snap.GpuTemp = Sanitize(_gpuTemp?.Value);
         snap.GpuPower = Sanitize(_gpuPower?.Value);
         if (_gpuFan?.Value is { } fan)
         {
