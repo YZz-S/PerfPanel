@@ -22,6 +22,7 @@ public partial class SettingsWindow : Window
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
         chkShowHint.IsChecked = c.ShowHint;
+        chkShowFooter.IsChecked = c.ShowFooter;
         chkShowPlan.IsChecked = c.ShowCodingPlan;
         txtDsKey.Text = c.DeepSeekKey;
         txtZpKey.Text = c.ZhipuKey;
@@ -172,6 +173,9 @@ public partial class SettingsWindow : Window
 
         chkShowHint.Checked += (_, _) => Apply(c => c.ShowHint = true);
         chkShowHint.Unchecked += (_, _) => Apply(c => c.ShowHint = false);
+
+        chkShowFooter.Checked += (_, _) => Apply(c => c.ShowFooter = true);
+        chkShowFooter.Unchecked += (_, _) => Apply(c => c.ShowFooter = false);
 
         btnAutoOn.Click += (_, _) =>
         {

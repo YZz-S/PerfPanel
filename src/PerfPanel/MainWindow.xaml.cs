@@ -86,6 +86,34 @@ public partial class MainWindow : Window
         RebuildTodoRows();
         _ = WeatherLoopAsync();
         _ = CodingPlanLoopAsync();
+
+        // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
+        // 保证开机自启动后面板始终铺满副屏、不被任务栏盖住底部
+        if (!_windowed)
+        {
+            var bootstraps = new[] { 2000, 6000 };
+            foreach (var delay in bootstraps)
+            {
+                var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delay) };
+                t.Tick += (_, _) =>
+                {
+                    t.Stop();
+                    SnapToMonitor();
+                };
+                t.Start();
+            }
+            var topmost = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            topmost.Tick += (_, _) => ReassertTopmost();
+            topmost.Start();
+        }
+    }
+
+    /// <summary>重申 TOPMOST(不动位置尺寸、不抢焦点),压住任务栏保证面板完整可见。</summary>
+    private void ReassertTopmost()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        const uint swpNomoveNosizeNoActivate = 0x0001 | 0x0002 | 0x0010;
+        MonitorHelper.SetWindowPos(_hwnd, new IntPtr(-1), 0, 0, 0, 0, swpNomoveNosizeNoActivate);
     }
 
     /// <summary>全屏模式:窗口用 WPF 逻辑像素先摆个大概,句柄创建后再用物理像素精确贴屏。</summary>
@@ -126,6 +154,7 @@ public partial class MainWindow : Window
     {
         var c = Config.Current;
         txtHint.Visibility = c.ShowHint ? Visibility.Visible : Visibility.Collapsed;
+        txtFooter.Visibility = c.ShowFooter ? Visibility.Visible : Visibility.Collapsed;
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;
@@ -497,7 +526,9 @@ public partial class MainWindow : Window
         // ---- 头部 ----
         txtTime.Text = s.Time.ToString("HH:mm:ss");
         txtDate.Text = s.Time.ToString("yyyy年M月d日 ") + Weekday(s.Time);
-        txtUptime.Text = "开机 " + FormatUptime(s.Uptime);
+        // 真实开机时刻(系统最后启动的墙钟时间) + 运行时长,避免"开机 HH:mm:ss"被误读成时刻
+        var boot = s.Time - s.Uptime;
+        txtUptime.Text = $"开机 {boot:MM-dd HH:mm} · 已运行 {FormatUptime(s.Uptime)}";
 
         bool full = s.FullSensorMode;
         dotMode.Fill = full ? new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99))
@@ -764,8 +795,8 @@ public partial class MainWindow : Window
 
         var nameLine = new TextBlock
         {
-            FontSize = 11, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
-            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0),
+            FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
+            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 3, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
 
@@ -795,7 +826,7 @@ public partial class MainWindow : Window
             var tightest = windows.OrderBy(w => 100 - (w.UsedPercent ?? 0)).First();
             ring = new NestedRingGauge
             {
-                Width = 56, Height = 56, CenterFontSize = 9,
+                Width = 66, Height = 66, CenterFontSize = 10.5,
                 Rings = windows.Select(w => new RingSlice(w.UsedPercent ?? 0, PlanValueBrush(w))).ToList(),
                 CenterText = $"剩{100 - (tightest.UsedPercent ?? 0):F0}%",
                 CenterBrush = PlanValueBrush(tightest),
@@ -808,7 +839,7 @@ public partial class MainWindow : Window
             var main = p.Windows.FirstOrDefault();
             ring = new NestedRingGauge
             {
-                Width = 56, Height = 56, CenterFontSize = 10,
+                Width = 66, Height = 66, CenterFontSize = 11.5,
                 Rings = [new RingSlice(100, PlanValueBrush(main))],
                 CenterText = FormatPlanValue(main, p.Unit),
                 CenterBrush = PlanValueBrush(main),
@@ -826,15 +857,15 @@ public partial class MainWindow : Window
     /// <summary>横屏图例行:色点(对应环) + 标签 + 剩余% + 重置倒计时。</summary>
     private static FrameworkElement BuildCompactLegendLine(QuotaWindow w)
     {
-        var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
         line.Children.Add(new Border
         {
-            Width = 7, Height = 7, CornerRadius = new CornerRadius(2),
+            Width = 8, Height = 8, CornerRadius = new CornerRadius(2.5),
             Background = PlanValueBrush(w), VerticalAlignment = VerticalAlignment.Center,
         });
         var txt = new TextBlock
         {
-            FontSize = 10.5, FontFamily = new FontFamily("Consolas"),
+            FontSize = 11.5, FontFamily = new FontFamily("Consolas"),
             Foreground = BrushFromHex("#55648A"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),

@@ -310,7 +310,7 @@
                                     <ScrollViewer.Resources>
                                         <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource SlimVScrollBar}"/>
                                     </ScrollViewer.Resources>
-                                    <StackPanel x:Name="planRows" Margin="0,8,10,0"/>
+                                    <StackPanel x:Name="planRows" Margin="0,4,10,0"/>
                                 </ScrollViewer>
                             </Grid>
                         </Border>

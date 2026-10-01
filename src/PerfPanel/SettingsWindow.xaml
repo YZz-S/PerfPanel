@@ -222,6 +222,7 @@
                 <Slider x:Name="sldScale" Minimum="0.8" Maximum="1.3" LargeChange="0.05" SmallChange="0.05"
                         TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
                 <CheckBox x:Name="chkShowHint" Content="显示操作提示(拖动/方向键/S 设置/Esc 退出)" Style="{StaticResource CheckStyle}"/>
+                <CheckBox x:Name="chkShowFooter" Content="显示底部状态行(SYSTEM MONITOR · FULL SENSORS)" Style="{StaticResource CheckStyle}"/>
             </StackPanel>
         </Border>
 

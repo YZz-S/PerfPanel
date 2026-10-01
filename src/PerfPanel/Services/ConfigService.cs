@@ -11,6 +11,7 @@ public sealed class AppConfig
     public int WeatherRefreshMinutes { get; set; } = 30;
     public bool ShowWeather { get; set; } = true;
     public bool ShowHint { get; set; } = true;
+    public bool ShowFooter { get; set; } = true;      // 底部 SYSTEM MONITOR 状态行
     public string AmapKey { get; set; } = "";         // 高德 Web服务 Key;空 = Open-Meteo 免费源
 
     // ---- Coding Plan 额度 ----
