@@ -19,7 +19,7 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
 - **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan remaining quota with reset countdowns
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
-- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (quota windows render as small rings with reset countdowns); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
+- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (each provider renders one aligned nested ring gauge — 5h/week/month from outer to inner — with the tightest remaining quota in the center; balance-type providers like DeepSeek show a full ring with the amount); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
 
 ## Run
 

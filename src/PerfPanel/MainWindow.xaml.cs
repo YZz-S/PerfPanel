@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -106,6 +107,31 @@ public partial class MainWindow : Window
             topmost.Tick += (_, _) => ReassertTopmost();
             topmost.Start();
         }
+
+        // 自截图:exe 旁存在 shot-request.txt(首行=输出 PNG 路径)时,启动 18s 后(传感器/额度已就绪)
+        // 以设计尺寸渲染整窗保存,随后删除请求文件。用于更新 README 效果图,不受屏幕捕获/DPI 影响。
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(18000);
+            try
+            {
+                string marker = Path.Combine(AppContext.BaseDirectory, "shot-request.txt");
+                if (!File.Exists(marker)) return;
+                string outPath = File.ReadAllLines(marker).FirstOrDefault()?.Trim() ?? "";
+                if (outPath.Length == 0) return;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    var rtb = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                    rtb.Render(this);
+                    var enc = new PngBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(rtb));
+                    using var fs = File.Create(outPath);
+                    enc.Save(fs);
+                });
+                File.Delete(marker);
+            }
+            catch { }
+        });
     }
 
     /// <summary>重申 TOPMOST(不动位置尺寸、不抢焦点),压住任务栏保证面板完整可见。</summary>
