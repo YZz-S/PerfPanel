@@ -6,7 +6,7 @@
 
 ## 运行效果图
 
-![运行效果图](image/运行效果.png)
+![运行效果图](image/panel-landscape.png)
 
 ## 功能
 
@@ -43,6 +43,14 @@ PerfPanel.exe --landscape / --portrait   # 强制横版 / 竖版(auto 按副屏�
 要求:.NET 8 桌面运行时(WindowsDesktop 8.0.x)。
 
 **要完整温度/风扇/功耗:右键"以管理员身份运行",并安装一次 PawnIO 驱动**(双击 `dist/安装PawnIO驱动-解锁CPU温度.bat` —— 自动装驱动、换新 exe 并重启面板)。LibreHardwareMonitor 0.9.5 起,CPU 传感器改走 [PawnIO](https://github.com/namazso/PawnIO.Setup) —— 一个签名的、兼容"内存完整性(HVCI)"的内核驱动,替代了已被 Windows 拦截的旧 WinRing0 系 Ring0 驱动。未装 PawnIO(或未提权)时 CPU 温度/功耗/频率行自动隐藏,AMD/NVIDIA GPU 读数(用户态接口)不受影响;页脚会提示 `CPU温度不可用(需安装 PawnIO 驱动)`。
+
+## 应用图标与桌面快捷方式
+
+仓库内置生成的多尺寸图标(`src/PerfPanel/app.ico`,通过 `<ApplicationIcon>` 应用到 exe 与窗口)。双击 `dist/create-desktop-shortcut.bat` 即可在桌面创建快捷方式。
+
+## 资源占用
+
+在 Ryzen AI MAX+ 395(1920×440 副屏,125% DPI)上的稳态表现:单核占用约 2.8%,内存约 290 MB。LibreHardwareMonitor 全硬件遍历限频至约 1.5 秒一次(间隔内复用传感器读数),网卡列表 15 秒刷新,WMI 兜底查询缓存 2 秒,纯色画刷全部冻结复用——界面/曲线仍保持 1 秒刷新。
 
 ## 开机自启(已内置,命令行一键管理)
 

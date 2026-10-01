@@ -6,7 +6,7 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 
 ## Screenshot
 
-![Screenshot](image/运行效果.png)
+![Screenshot](image/panel-landscape.png)
 
 ## Features
 
@@ -43,6 +43,14 @@ PerfPanel.exe --landscape / --portrait   # force landscape / portrait (auto = by
 Requires the .NET 8 desktop runtime (WindowsDesktop 8.0.x).
 
 **For full temperature/fan/power: right-click → "Run as administrator"**, and install the PawnIO driver once (double-click `dist/安装PawnIO驱动-解锁CPU温度.bat` — it installs the driver, swaps in the newest exe and restarts the panel). Since LibreHardwareMonitor 0.9.5, CPU sensors go through [PawnIO](https://github.com/namazso/PawnIO.Setup) — a signed, Memory-Integrity(HVCI)-compatible driver that replaced the old WinRing0-style Ring0 driver Windows now blocks. Without it (or without admin), CPU temperature/power/clock rows stay hidden while NVIDIA/AMD GPU readings (user-mode APIs) keep working; the footer then says `CPU温度不可用(需安装 PawnIO 驱动)`.
+
+## App icon & desktop shortcut
+
+The repo ships a generated multi-size icon (`src/PerfPanel/app.ico`, applied to the exe and window via `<ApplicationIcon>`). To put a shortcut on your desktop, double-click `dist/create-desktop-shortcut.bat` (or run `PerfPanel.exe --autostart-on`'s scripts below for boot autostart).
+
+## Resource usage
+
+Steady state on a Ryzen AI MAX+ 395 (1920×440 secondary, 125% DPI): about 2.8% of one core and ~290 MB RAM. LibreHardwareMonitor's full hardware sweep is throttled to ~1.5 s (sensor readouts are reused in between), the NIC list is refreshed every 15 s, WMI fallback queries are cached for 2 s, and all solid-color brushes are frozen and reused — UI/graphs still tick at 1 Hz.
 
 ## Autostart (built in, one-line CLI)
 
