@@ -1090,18 +1090,33 @@ public partial class MainWindow : Window
 
     private static Brush LoadBrush(float pct) => pct switch
     {
-        > 92 => new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)),
-        > 75 => new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24)),
-        _ => new SolidColorBrush(Color.FromRgb(0x22, 0xD3, 0xEE)),
+        > 92 => CachedBrush(0xF8, 0x71, 0x71),
+        > 75 => CachedBrush(0xFB, 0xBF, 0x24),
+        _ => CachedBrush(0x22, 0xD3, 0xEE),
     };
 
     private static Brush TempBrush(float t) => t switch
     {
-        >= 85 => new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)),
-        >= 70 => new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24)),
-        >= 50 => new SolidColorBrush(Color.FromRgb(0x67, 0xE8, 0xF9)),
-        _ => new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99)),
+        >= 85 => CachedBrush(0xF8, 0x71, 0x71),
+        >= 70 => CachedBrush(0xFB, 0xBF, 0x24),
+        >= 50 => CachedBrush(0x67, 0xE8, 0xF9),
+        _ => CachedBrush(0x34, 0xD3, 0x99),
     };
+
+    private static readonly Dictionary<string, Brush> _brushCache = new();
+
+    /// <summary>纯色画刷缓存:UpdateUI 每秒多次取刷,冻结后复用避免 GC 压力。</summary>
+    private static Brush CachedBrush(byte r, byte g, byte b)
+    {
+        string key = $"{r:X2}{g:X2}{b:X2}";
+        if (!_brushCache.TryGetValue(key, out var brush))
+        {
+            brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+            brush.Freeze();
+            _brushCache[key] = brush;
+        }
+        return brush;
+    }
 
     private static string Weekday(DateTime d) => d.DayOfWeek switch
     {

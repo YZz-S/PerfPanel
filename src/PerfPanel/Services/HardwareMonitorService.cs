@@ -37,6 +37,7 @@ public sealed class HardwareMonitorService : IDisposable
     private ISensor? _ramLoad, _ramUsedGb;
     private bool _gpuFanPercent;
     private IHardware? _cpuHw, _gpuHw;   // 懒重选用:部分传感器(如 ADLX 功耗)启动后延迟出现
+    private DateTime _lastAcceptUtc;     // LHM 全量遍历限频:传感器值在两次遍历间保持上次读数
 
     public bool IsAvailable { get; private set; }
     public string CpuName { get; private set; } = "";
@@ -244,7 +245,14 @@ public sealed class HardwareMonitorService : IDisposable
 
     public void Fill(SensorSnapshot snap)
     {
-        _computer.Accept(_visitor);
+        // LHM 遍历(驱动读 MSR/SMN + ADLX 查询)是采样里最贵的一步,限频到 ~1.5s 一次;
+        // 间隔内的调用直接复用传感器上次读数(温度/功耗变化本来就慢,曲线无感知)
+        var now = DateTime.UtcNow;
+        if ((now - _lastAcceptUtc).TotalMilliseconds >= 1500 || _lastAcceptUtc == default)
+        {
+            _computer.Accept(_visitor);
+            _lastAcceptUtc = now;
+        }
         RePickMissing();
 
         snap.CpuName = CpuName;

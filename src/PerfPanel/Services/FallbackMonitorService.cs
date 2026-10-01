@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace PerfPanel.Services;
 
-/// <summary>免管理员的基础数据源:CPU 占用走 PDH 计数器(与任务管理器同口径),内存 P/Invoke、其余走本地化安全的 WMI 格式化性能类。</summary>
+/// <summary>免管理员的基础数据源:CPU 占用走 PDH 计数器(与任务管理器同口径),内存 P/Invoke、其余走本地化安全的 WMI 格式化性能类。
+/// WMI 查询较贵,各查询结果缓存 2s(BASIC 模式下每秒采样时减半开销)。</summary>
 public sealed class FallbackMonitorService : IDisposable
 {
     private ulong _totalPhysMb;
@@ -12,6 +13,18 @@ public sealed class FallbackMonitorService : IDisposable
     private string _gpuName = "";
     private bool _wmiOk;
     private PerformanceCounter? _cpuCounter;
+    private readonly Dictionary<string, (float? value, DateTime utc)> _wmiCache = new();
+
+    /// <summary>WMI 结果 2s 缓存:同 key 间隔内的重复查询直接复用。</summary>
+    private float? Cached(string key, Func<float?> query)
+    {
+        var now = DateTime.UtcNow;
+        if (_wmiCache.TryGetValue(key, out var hit) && (now - hit.utc).TotalSeconds < 2)
+            return hit.value;
+        var v = query();
+        _wmiCache[key] = (v, now);
+        return v;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MEMORYSTATUSEX
@@ -112,7 +125,7 @@ public sealed class FallbackMonitorService : IDisposable
         return GetCpuLoadByWmi();
     }
 
-    private float? GetCpuLoadByWmi()
+    private float? GetCpuLoadByWmi() => Cached(nameof(GetCpuLoadByWmi), () =>
     {
         if (!_wmiOk) return null;
         try
@@ -124,10 +137,10 @@ public sealed class FallbackMonitorService : IDisposable
         }
         catch { }
         return null;
-    }
+    });
 
     /// <summary>CPU 有效频率(GHz):PercentProcessorPerformance × 标称频率;性能百分比可超 100(睿频),不封顶。</summary>
-    public float? GetCpuFreqGHz()
+    public float? GetCpuFreqGHz() => Cached(nameof(GetCpuFreqGHz), () =>
     {
         if (!_wmiOk || _cpuMaxClockGHz <= 0) return null;
         try
@@ -143,10 +156,10 @@ public sealed class FallbackMonitorService : IDisposable
         }
         catch { }
         return null;
-    }
+    });
 
     /// <summary>GPU 占用(%):GPU 引擎性能类里 engtype_3D 实例取最大值。</summary>
-    public float? GetGpuLoad()
+    public float? GetGpuLoad() => Cached(nameof(GetGpuLoad), () =>
     {
         if (!_wmiOk) return null;
         try
@@ -165,10 +178,10 @@ public sealed class FallbackMonitorService : IDisposable
         }
         catch { }
         return null;
-    }
+    });
 
     /// <summary>显存占用(GB):GPU 适配器内存类的专用内存求和。</summary>
-    public float? GetGpuVramUsedGb()
+    public float? GetGpuVramUsedGb() => Cached(nameof(GetGpuVramUsedGb), () =>
     {
         if (!_wmiOk) return null;
         try
@@ -182,7 +195,7 @@ public sealed class FallbackMonitorService : IDisposable
         }
         catch { }
         return null;
-    }
+    });
 
     public void Dispose() => _cpuCounter?.Dispose();
 }
