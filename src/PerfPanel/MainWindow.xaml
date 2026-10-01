@@ -75,8 +75,8 @@
                                                    Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
                                     </StackPanel>
                                     <TextBlock x:Name="txtCpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
-                                    <ctl:RingGauge x:Name="ringCpu" Width="60" Height="60" HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center" RingThickness="7" TextFontSize="16"
+                                    <ctl:RingGauge x:Name="ringCpu" Width="48" Height="48" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="6" TextFontSize="14"
                                                    TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
 
@@ -130,8 +130,8 @@
                                                    Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
                                     </StackPanel>
                                     <TextBlock x:Name="txtGpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
-                                    <ctl:RingGauge x:Name="ringGpu" Width="60" Height="60" HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center" RingThickness="7" TextFontSize="16"
+                                    <ctl:RingGauge x:Name="ringGpu" Width="48" Height="48" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="6" TextFontSize="14"
                                                    TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
 
@@ -179,8 +179,8 @@
                                 <Grid>
                                     <TextBlock Text="MEMORY" Style="{StaticResource SectionTitleStyle}"/>
                                     <TextBlock x:Name="txtRamPct" Text="--" Style="{StaticResource MidValueStyle}"/>
-                                    <ctl:RingGauge x:Name="ringRam" Width="52" Height="52" HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center" RingThickness="6" TextFontSize="14"
+                                    <ctl:RingGauge x:Name="ringRam" Width="48" Height="48" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="6" TextFontSize="13"
                                                    TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
                                 <Border x:Name="barRamTrack" Style="{StaticResource TrackStyle}" Height="10" Margin="0,10,0,0">
@@ -374,8 +374,8 @@
                         <ColumnDefinition Width="28*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="45*"/>
-                        <RowDefinition Height="55*"/>
+                        <RowDefinition Height="40*"/>
+                        <RowDefinition Height="60*"/>
                     </Grid.RowDefinitions>
 
                     <ContentControl x:Name="landCpuCell" Grid.Column="0" Grid.Row="0"

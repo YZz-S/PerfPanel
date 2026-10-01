@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -280,8 +281,8 @@ public partial class MainWindow : Window
         UpdateLandscapeSpans();
     }
 
-    /// <summary>横屏紧凑磁贴(CPU/GPU/内存):圆环显示用量,隐藏大数字/进度条,统计值缩小。
-    /// 竖屏还原为大数字 + 进度条布局。曲线显隐由调用处单独控制。</summary>
+    /// <summary>横屏紧凑磁贴(CPU/GPU/内存):圆环显示用量,隐藏大数字/进度条;
+    /// 统计 2×2 重排为单行四列并缩小字号,保证磁贴压进上排高度。竖屏还原。</summary>
     private void SetCompactTiles(bool compact)
     {
         var vis = compact ? Visibility.Visible : Visibility.Collapsed;
@@ -295,12 +296,44 @@ public partial class MainWindow : Window
         barGpuTrack.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         barRamTrack.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
-        double statFont = compact ? 14 : 19;
+        double statFont = compact ? 12 : 19;
         foreach (var txt in new[] { txtCpuFreq, txtCpuTemp, txtCpuPower, txtCpuFan, txtGpuVram, txtGpuTemp, txtGpuPower, txtGpuFan })
             txt.FontSize = statFont;
-        foreach (var grid in new[] { gridCpuStats, gridGpuStats })
-            foreach (var row in grid.RowDefinitions)
-                row.MinHeight = compact ? 0 : 46;
+
+        foreach (var (grid, cells) in new[]
+                 {
+                     (gridCpuStats, new[] { rowCpuFreq, rowCpuTemp, rowCpuPower, rowCpuFan }),
+                     (gridGpuStats, new[] { rowGpuVram, rowGpuTemp, rowGpuPower, rowGpuFan }),
+                 })
+        {
+            if (compact)
+            {
+                // 单行四列:磁贴高度只剩 头部(圆环) + 一行统计
+                grid.RowDefinitions.Clear();
+                grid.ColumnDefinitions.Clear();
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                for (int i = 0; i < 4; i++)
+                {
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    Grid.SetRow(cells[i], 0);
+                    Grid.SetColumn(cells[i], i);
+                }
+            }
+            else
+            {
+                grid.RowDefinitions.Clear();
+                grid.ColumnDefinitions.Clear();
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 46 });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 46 });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                for (int i = 0; i < 4; i++)
+                {
+                    Grid.SetRow(cells[i], i / 2);
+                    Grid.SetColumn(cells[i], i % 2);
+                }
+            }
+        }
     }
 
     /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行;便签卡挂左下大格。竖版无格位概念,直接跳过。</summary>
@@ -640,15 +673,38 @@ public partial class MainWindow : Window
 
         planRows.Children.Clear();
         bool compact = _orientation == PanelOrientation.Landscape;
-        foreach (var p in _codingPlan.Current)
-            planRows.Children.Add(BuildPlanSection(p, compact));
+        var sections = _codingPlan.Current
+            .Select(p => compact ? BuildCompactPlanSection(p) : (FrameworkElement)BuildPlanSection(p))
+            .ToList();
+
+        // 横屏多供应商:两栏排布保证不滚动(单栏 ~140px 装不下三段)
+        if (compact && sections.Count > 2)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var col0 = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
+            var col1 = new StackPanel();
+            int split = (sections.Count + 1) / 2;
+            for (int i = 0; i < sections.Count; i++)
+                (i < split ? col0 : col1).Children.Add(sections[i]);
+            Grid.SetColumn(col0, 0);
+            Grid.SetColumn(col1, 1);
+            grid.Children.Add(col0);
+            grid.Children.Add(col1);
+            planRows.Children.Add(grid);
+        }
+        else
+        {
+            foreach (var s in sections)
+                planRows.Children.Add(s);
+        }
     }
 
-    /// <summary>构建一个供应商区块:标题行(名称+主值) + 限额窗口。
-    /// 竖屏:每窗口一行(标签/用量条/剩余/重置倒计时);横屏:窗口并排成列,压进卡片半格高度。</summary>
-    private static StackPanel BuildPlanSection(PlanStatus p, bool compact)
+    /// <summary>竖屏供应商区块:标题行(名称+主值) + 每限额窗口一行(标签/用量条/剩余/重置倒计时)。</summary>
+    private static StackPanel BuildPlanSection(PlanStatus p)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, compact ? 6 : 10) };
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
 
         // ---- 标题行 ----
         var head = new Grid { Margin = new Thickness(0, 0, 0, 0) };
@@ -689,7 +745,7 @@ public partial class MainWindow : Window
         head.Children.Add(new TextBlock
         {
             Text = FormatPlanValue(main, p.Unit),
-            FontSize = compact ? 14 : 22,
+            FontSize = 22,
             FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
             Foreground = PlanValueBrush(main), HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
@@ -697,28 +753,104 @@ public partial class MainWindow : Window
         panel.Children.Add(head);
 
         var percentWindows = p.Windows.Where(w => w.UsedPercent is not null).ToList();
-        if (percentWindows.Count == 0) return panel;
+        foreach (var w in percentWindows)
+            panel.Children.Add(BuildPlanWindowRow(w));
+        return panel;
+    }
 
-        // ---- 窗口:横屏并排成列,竖屏逐行 ----
-        if (compact)
+    /// <summary>横屏供应商区块(紧凑):嵌套圆环(5h/周/月 由外到内) + 图例,免滚动一眼全览。
+    /// 百分比窗口画进环里;纯绝对值型(如 DeepSeek 余额)只出图例行。</summary>
+    private static FrameworkElement BuildCompactPlanSection(PlanStatus p)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var legend = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+
+        var nameLine = new TextBlock
         {
-            var columns = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-            for (int i = 0; i < percentWindows.Count; i++)
-                columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (int i = 0; i < percentWindows.Count; i++)
+            FontSize = 12, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        if (!p.Ok)
+        {
+            nameLine.Text = $"{p.Name} ✗";
+            nameLine.Foreground = BrushFromHex("#F87171");
+            legend.Children.Add(nameLine);
+            legend.Children.Add(new TextBlock
             {
-                var cell = BuildPlanWindowCell(percentWindows[i]);
-                Grid.SetColumn(cell, i);
-                columns.Children.Add(cell);
-            }
-            panel.Children.Add(columns);
+                Text = p.Error ?? "查询失败", FontSize = 10, Foreground = BrushFromHex("#F87171"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            row.Children.Add(legend);
+            return row;
+        }
+
+        nameLine.Text = p.PlanName is { Length: > 0 } plan ? $"{p.Name} · {plan}" : p.Name;
+        if (p.StaleError is { Length: > 0 })
+            nameLine.Text += " · 旧数据";
+        legend.Children.Add(nameLine);
+
+        var windows = p.Windows.Where(w => w.UsedPercent is not null).ToList();
+        if (windows.Count > 0)
+        {
+            var rings = new NestedRingGauge
+            {
+                Width = 46, Height = 46,
+                Rings = windows.Select(w => new RingSlice(w.UsedPercent ?? 0, PlanValueBrush(w))).ToList(),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(rings, 0);
+            row.Children.Add(rings);
+
+            for (int i = 0; i < windows.Count; i++)
+                legend.Children.Add(BuildCompactLegendLine(windows[i]));
         }
         else
         {
-            foreach (var w in percentWindows)
-                panel.Children.Add(BuildPlanWindowRow(w));
+            var main = p.Windows.FirstOrDefault();
+            legend.Children.Add(new TextBlock
+            {
+                FontSize = 15, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
+                Foreground = PlanValueBrush(main),
+                Text = FormatPlanValue(main, p.Unit),
+            });
         }
-        return panel;
+
+        Grid.SetColumn(legend, 1);
+        row.Children.Add(legend);
+        return row;
+    }
+
+    /// <summary>横屏图例行:色点(对应环) + 标签 + 剩余% + 重置倒计时。</summary>
+    private static FrameworkElement BuildCompactLegendLine(QuotaWindow w)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        line.Children.Add(new Border
+        {
+            Width = 7, Height = 7, CornerRadius = new CornerRadius(2),
+            Background = PlanValueBrush(w), VerticalAlignment = VerticalAlignment.Center,
+        });
+        var txt = new TextBlock
+        {
+            FontSize = 10.5, FontFamily = new FontFamily("Consolas"),
+            Foreground = BrushFromHex("#55648A"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 0, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var remain = new Run($"{w.Label} 剩{100 - (w.UsedPercent ?? 0):F0}%")
+        {
+            Foreground = PlanValueBrush(w),
+            FontWeight = FontWeights.Bold,
+        };
+        txt.Inlines.Add(remain);
+        string reset = FormatResetIn(w.ResetUtc);
+        if (reset.Length > 0)
+            txt.Inlines.Add(new Run(" " + reset.TrimStart('·', ' ')));
+        line.Children.Add(txt);
+        return line;
     }
 
     /// <summary>竖屏窗口行:标签 | 用量条 | 剩余+重置倒计时。</summary>
@@ -749,36 +881,6 @@ public partial class MainWindow : Window
         Grid.SetColumn(value, 2);
         row.Children.Add(value);
         return row;
-    }
-
-    /// <summary>横屏窗口单元:圆环(剩余百分比) + 右侧标签与重置倒计时。</summary>
-    private static FrameworkElement BuildPlanWindowCell(QuotaWindow w)
-    {
-        double used = w.UsedPercent ?? 0;
-        var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
-
-        cell.Children.Add(new RingGauge
-        {
-            Width = 42, Height = 42, RingThickness = 5, TextFontSize = 11,
-            Value = used, Text = $"{100 - used:F0}%", RingBrush = PlanValueBrush(w),
-            TrackBrush = BrushFromHex("#1B2743"), TextBrush = BrushFromHex("#EAF2FF"),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-
-        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        texts.Children.Add(new TextBlock
-        {
-            Text = w.Label, FontSize = 12, FontWeight = FontWeights.Bold,
-            Foreground = BrushFromHex("#8FA3C8"),
-        });
-        texts.Children.Add(new TextBlock
-        {
-            Text = FormatResetIn(w.ResetUtc).TrimStart('·', ' '),
-            FontSize = 10, FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#55648A"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        cell.Children.Add(texts);
-        return cell;
     }
 
     /// <summary>用量条:按剩余量着色,宽度跟随轨道实际尺寸。</summary>
