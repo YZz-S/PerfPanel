@@ -75,15 +75,18 @@
                                                    Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
                                     </StackPanel>
                                     <TextBlock x:Name="txtCpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
+                                    <ctl:RingGauge x:Name="ringCpu" Width="60" Height="60" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="7" TextFontSize="16"
+                                                   TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
 
-                                <Border Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
+                                <Border x:Name="barCpuTrack" Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
                                     <Border x:Name="barCpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
                                 </Border>
 
                                 <ctl:HistoryGraph Grid.Row="2" x:Name="cpuGraph" Height="96" Margin="0,12,0,4"/>
 
-                                <Grid Grid.Row="3" Margin="0,8,0,0">
+                                <Grid Grid.Row="3" x:Name="gridCpuStats" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
@@ -127,15 +130,18 @@
                                                    Margin="2,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
                                     </StackPanel>
                                     <TextBlock x:Name="txtGpuLoad" Text="--" Style="{StaticResource BigValueStyle}"/>
+                                    <ctl:RingGauge x:Name="ringGpu" Width="60" Height="60" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="7" TextFontSize="16"
+                                                   TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
 
-                                <Border Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
+                                <Border x:Name="barGpuTrack" Grid.Row="1" Style="{StaticResource TrackStyle}" Margin="0,10,0,0">
                                     <Border x:Name="barGpuFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
                                 </Border>
 
                                 <ctl:HistoryGraph Grid.Row="2" x:Name="gpuGraph" Height="96" Margin="0,12,0,4" LineColor="#A78BFA"/>
 
-                                <Grid Grid.Row="3" Margin="0,8,0,0">
+                                <Grid Grid.Row="3" x:Name="gridGpuStats" Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
@@ -173,8 +179,11 @@
                                 <Grid>
                                     <TextBlock Text="MEMORY" Style="{StaticResource SectionTitleStyle}"/>
                                     <TextBlock x:Name="txtRamPct" Text="--" Style="{StaticResource MidValueStyle}"/>
+                                    <ctl:RingGauge x:Name="ringRam" Width="52" Height="52" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" RingThickness="6" TextFontSize="14"
+                                                   TextBrush="#EAF2FF" Visibility="Collapsed"/>
                                 </Grid>
-                                <Border Style="{StaticResource TrackStyle}" Height="10" Margin="0,10,0,0">
+                                <Border x:Name="barRamTrack" Style="{StaticResource TrackStyle}" Height="10" Margin="0,10,0,0">
                                     <Border x:Name="barRamFill" Style="{StaticResource FillStyle}" HorizontalAlignment="Left"/>
                                 </Border>
                                 <TextBlock x:Name="txtRamDetail" Text="-- GB" HorizontalAlignment="Right"
@@ -284,18 +293,26 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Coding Plan 额度 -->
+                        <!-- Coding Plan 额度:头部固定,滚动区占满剩余空间(内容再多也只在头部以下滚动,不会顶到标题) -->
                         <Border x:Name="cardCodingPlan" Style="{StaticResource CardStyle}" Visibility="Collapsed">
-                            <StackPanel>
-                                <Grid>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
                                     <TextBlock Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
                                     <TextBlock x:Name="txtPlanRefresh" Text="" FontSize="10" Foreground="#55648A"
                                                HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
                                 </Grid>
-                                <ScrollViewer x:Name="planScroll" VerticalScrollBarVisibility="Hidden">
-                                    <StackPanel x:Name="planRows" Margin="0,10,0,0"/>
+                                <ScrollViewer x:Name="planScroll" Grid.Row="1" Margin="0,2,0,0"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer.Resources>
+                                        <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource SlimVScrollBar}"/>
+                                    </ScrollViewer.Resources>
+                                    <StackPanel x:Name="planRows" Margin="0,8,10,0"/>
                                 </ScrollViewer>
-                            </StackPanel>
+                            </Grid>
                         </Border>
 
                     </StackPanel>
@@ -318,7 +335,8 @@
             </Grid>
 
             <!-- ================================================================
-                 横版 1920×440:时钟居中,CPU/GPU 左右分栏,内存+网络、天气+额度纵跨两格
+                 横版 1920×440:时钟居中,上排 CPU/GPU/内存 圆环紧凑磁贴 + 天气,
+                 下排 便签待办大卡片(跨两列) | 网络 | 额度
                  (共用竖版声明的卡片与文字元素,切换时由代码挂载)
                  ================================================================ -->
             <Grid x:Name="landscapeRoot" Visibility="Collapsed">
@@ -347,22 +365,22 @@
                     <StackPanel x:Name="landClockCell" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- 卡片区:左 CPU 全高 | GPU 全高 | 中列 内存/网络 | 右列 天气/额度 -->
+                <!-- 卡片区:上排 CPU/GPU/内存 紧凑磁贴 + 天气;下排 便签大卡片(跨两列) | 网络 | 额度 -->
                 <Grid Grid.Row="1" Margin="16,6,16,8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="26*"/>
-                        <ColumnDefinition Width="26*"/>
-                        <ColumnDefinition Width="19*"/>
-                        <ColumnDefinition Width="29*"/>
+                        <ColumnDefinition Width="24*"/>
+                        <ColumnDefinition Width="24*"/>
+                        <ColumnDefinition Width="24*"/>
+                        <ColumnDefinition Width="28*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="45*"/>
+                        <RowDefinition Height="55*"/>
                     </Grid.RowDefinitions>
 
-                    <ContentControl x:Name="landCpuCell" Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                    <ContentControl x:Name="landCpuCell" Grid.Column="0" Grid.Row="0"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
-                    <ContentControl x:Name="landGpuCell" Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                    <ContentControl x:Name="landGpuCell" Grid.Column="1" Grid.Row="0"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     <ContentControl x:Name="landMemCell" Grid.Column="2" Grid.Row="0"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
@@ -372,36 +390,9 @@
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     <ContentControl x:Name="landPlanCell" Grid.Column="3" Grid.Row="1"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landNotesCell" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                 </Grid>
-
-                <!-- 便签条:横屏时占一整行,竖屏用完整卡片 -->
-                <Border x:Name="landNotesStrip" Grid.Row="2" Margin="16,2,16,6" Background="#111A2E"
-                        BorderBrush="#223052" BorderThickness="1" CornerRadius="12" Padding="14,7"
-                        Visibility="Collapsed">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="3*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="4*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="3*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="FOCUS" FontSize="13" FontWeight="Bold" FontFamily="Consolas"
-                                   Foreground="#6EE7F7" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="txtStripNote" Grid.Column="1" Text="" FontSize="14" FontWeight="Bold"
-                                   Foreground="#FBBF24" VerticalAlignment="Center" Margin="14,0,10,0"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock x:Name="txtStripTodoLabel" Grid.Column="2" Text="待办" FontSize="11"
-                                   Foreground="#55648A" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="txtStripTodo" Grid.Column="3" Text="" FontSize="13"
-                                   Foreground="#C9D6EE" VerticalAlignment="Center" Margin="8,0,10,0"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock x:Name="txtStripReminder" Grid.Column="5" Text="" FontSize="12"
-                                   Foreground="#8FA3C8" VerticalAlignment="Center" HorizontalAlignment="Right"
-                                   TextTrimming="CharacterEllipsis"/>
-                    </Grid>
-                </Border>
 
                 <!-- 底部装饰 -->
                 <StackPanel x:Name="landFooter" Grid.Row="3" Margin="20,2,20,8">

@@ -19,3 +19,8 @@ volc-last-response.json
 .mimosa/
 .v2c/
 .video_agent/
+
+# 便签/待办(个人数据)与本地诊断、驱动安装器
+dist/notes.json
+dist/tools/
+.diag/

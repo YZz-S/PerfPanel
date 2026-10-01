@@ -36,6 +36,7 @@ public sealed class HardwareMonitorService : IDisposable
     private ISensor? _gpuLoad, _gpuTemp, _gpuPower, _gpuFan, _gpuVramUsed, _gpuVramTotal;
     private ISensor? _ramLoad, _ramUsedGb;
     private bool _gpuFanPercent;
+    private IHardware? _cpuHw, _gpuHw;   // 懒重选用:部分传感器(如 ADLX 功耗)启动后延迟出现
 
     public bool IsAvailable { get; private set; }
     public string CpuName { get; private set; } = "";
@@ -73,6 +74,7 @@ public sealed class HardwareMonitorService : IDisposable
             if (hw.HardwareType == HardwareType.Cpu)
             {
                 CpuName = hw.Name;
+                _cpuHw ??= hw;
                 _cpuTemp ??= Find(hw, SensorType.Temperature,
                     ["CPU Package", "Core (Tctl/Tdie)", "Core (Tctl)", "Package"]);
             }
@@ -122,6 +124,7 @@ public sealed class HardwareMonitorService : IDisposable
             .FirstOrDefault();
         if (gpu != null)
         {
+            _gpuHw = gpu;
             GpuName = gpu.Name;
             _gpuLoad ??= Find(gpu, SensorType.Load, ["GPU Core", "D3D 3D"]);
             _gpuTemp ??= Find(gpu, SensorType.Temperature, ["GPU Core", "GPU Package"]);
@@ -196,9 +199,53 @@ public sealed class HardwareMonitorService : IDisposable
         return 1;
     }
 
+    /// <summary>部分传感器(ADLX 功耗/温度、PawnIO 时钟)在启动后延迟出现,初始化只选一次会永久漏选;
+    /// 每次采样前对仍缺失的指标按原规则重选。已选中的不覆盖。</summary>
+    private void RePickMissing()
+    {
+        if (_cpuHw != null)
+        {
+            _cpuLoad ??= Find(_cpuHw, SensorType.Load, ["CPU Total"]);
+            _cpuPower ??= Find(_cpuHw, SensorType.Power, ["CPU Package", "Package"]);
+            if (_cpuClocks.Length == 0)
+                _cpuClocks = _cpuHw.Sensors
+                    .Where(s => s.SensorType == SensorType.Clock && CoreClockRegex.IsMatch(s.Name))
+                    .ToArray();
+            _cpuTemp ??= _cpuHw.Sensors
+                .Where(s => s.SensorType == SensorType.Temperature && s.Value > 0)
+                .OrderBy(s => s.Index)
+                .FirstOrDefault();
+        }
+
+        if (_gpuHw == null) return;
+        _gpuLoad ??= Find(_gpuHw, SensorType.Load, ["GPU Core", "D3D 3D"]);
+        _gpuTemp ??= Find(_gpuHw, SensorType.Temperature, ["GPU Core", "GPU Package"])
+                     ?? _gpuHw.Sensors
+                         .Where(s => s.SensorType == SensorType.Temperature)
+                         .OrderByDescending(s => GpuTempRank(s.Name))
+                         .ThenBy(s => s.Index)
+                         .FirstOrDefault();
+        _gpuPower ??= Find(_gpuHw, SensorType.Power, ["GPU Package", "GPU Power", "GPU Board Power", "GPU Core"]);
+        foreach (var s in _gpuHw.Sensors)
+        {
+            var n = s.Name.ToLowerInvariant();
+            if (s.SensorType is SensorType.Fan or SensorType.Control && n.Contains("fan"))
+            {
+                _gpuFan ??= s;
+                _gpuFanPercent = _gpuFan != null && _gpuFan.SensorType == SensorType.Control;
+            }
+            if (s.SensorType == SensorType.SmallData)
+            {
+                if (n.Contains("used")) _gpuVramUsed ??= s;
+                if (n.Contains("total")) _gpuVramTotal ??= s;
+            }
+        }
+    }
+
     public void Fill(SensorSnapshot snap)
     {
         _computer.Accept(_visitor);
+        RePickMissing();
 
         snap.CpuName = CpuName;
         snap.GpuName = GpuName;

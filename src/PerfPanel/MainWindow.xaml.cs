@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using PerfPanel.Controls;
 using PerfPanel.Models;
 using PerfPanel.Services;
 using Brush = System.Windows.Media.Brush;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     private readonly bool _windowed;
     private readonly PanelOrientation? _cliOrientation;
     private PanelOrientation _orientation = PanelOrientation.Portrait;
+    private double _todoFontSize = 13;   // 待办行字号(横屏大卡片放大)
     private bool _sampling;
     private int _lastPlanMinute = -1;
     private DateTime _reminderActiveUntilUtc = DateTime.MinValue;
@@ -215,12 +217,18 @@ public partial class MainWindow : Window
             MoveTo(portCards, card);
         }
 
-        cpuGraph.Height = 96;   // 竖版固定高;横版由 * 行自动填满
+        // 竖版:大数字 + 进度条 + 历史曲线,统计 2×2 全量
+        SetCompactTiles(compact: false);
+        cpuGraph.Visibility = Visibility.Visible;
+        gpuGraph.Visibility = Visibility.Visible;
+        cpuGraph.Height = 96;
         gpuGraph.Height = 96;
         netGraph.Height = 64;
-        planScroll.Height = double.NaN;
         txtCpuName.MaxWidth = 240;
         txtGpuName.MaxWidth = 240;
+        txtNoteText.FontSize = 15;
+        txtNotesReminder.FontSize = 12;
+        _todoFontSize = 13;
     }
 
     private void ArrangeLandscape()
@@ -246,27 +254,56 @@ public partial class MainWindow : Window
         txtUptime.VerticalAlignment = VerticalAlignment.Center;
         btnGear.Margin = new Thickness(24, 0, 0, 0);
 
-        cpuGraph.Height = double.NaN; // 曲线在 * 行自动填满卡片剩余空间
-        gpuGraph.Height = double.NaN;
+        // 紧凑磁贴:圆环表示用量,无历史曲线,统计行压缩
+        SetCompactTiles(compact: true);
+        cpuGraph.Visibility = Visibility.Collapsed;
+        gpuGraph.Visibility = Visibility.Collapsed;
         netGraph.Height = double.NaN;
-        planScroll.Height = 93;
         txtCpuName.MaxWidth = 330;
         txtGpuName.MaxWidth = 330;
+        txtNoteText.FontSize = 18;
+        txtNotesReminder.FontSize = 13;
+        _todoFontSize = 15;
 
         MoveTo(landCpuCell, cardCpu);
-        cardCpu.Margin = new Thickness(0, 0, 12, 0);
+        cardCpu.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landGpuCell, cardGpu);
-        cardGpu.Margin = new Thickness(0, 0, 12, 0);
+        cardGpu.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landMemCell, cardMemory);
         cardMemory.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landNetCell, cardNetwork);
         cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landNotesCell, cardNotes);
+        cardNotes.Margin = new Thickness(0, 0, 12, 0);
 
         // 天气/额度占右列上下两格,空缺时另一半纵跨两行
         UpdateLandscapeSpans();
     }
 
-    /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行。竖版无格位概念,直接跳过。</summary>
+    /// <summary>横屏紧凑磁贴(CPU/GPU/内存):圆环显示用量,隐藏大数字/进度条,统计值缩小。
+    /// 竖屏还原为大数字 + 进度条布局。曲线显隐由调用处单独控制。</summary>
+    private void SetCompactTiles(bool compact)
+    {
+        var vis = compact ? Visibility.Visible : Visibility.Collapsed;
+        ringCpu.Visibility = vis;
+        ringGpu.Visibility = vis;
+        ringRam.Visibility = vis;
+        txtCpuLoad.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        txtGpuLoad.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        txtRamPct.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        barCpuTrack.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        barGpuTrack.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        barRamTrack.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+
+        double statFont = compact ? 14 : 19;
+        foreach (var txt in new[] { txtCpuFreq, txtCpuTemp, txtCpuPower, txtCpuFan, txtGpuVram, txtGpuTemp, txtGpuPower, txtGpuFan })
+            txt.FontSize = statFont;
+        foreach (var grid in new[] { gridCpuStats, gridGpuStats })
+            foreach (var row in grid.RowDefinitions)
+                row.MinHeight = compact ? 0 : 46;
+    }
+
+    /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行;便签卡挂左下大格。竖版无格位概念,直接跳过。</summary>
     private void UpdateLandscapeSpans()
     {
         if (_orientation != PanelOrientation.Landscape) return;
@@ -293,6 +330,11 @@ public partial class MainWindow : Window
             cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
             Grid.SetRowSpan(landPlanCell, 2);
         }
+
+        if (Config.Current.ShowNotes)
+            MoveTo(landNotesCell, cardNotes);
+        else
+            MoveTo(landNotesCell, null);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -424,7 +466,7 @@ public partial class MainWindow : Window
         txtFooter.Text = !full
             ? "SYSTEM MONITOR · BASIC(管理员可解锁温度)"
             : s.CpuTemp is null
-                ? "SYSTEM MONITOR · FULL · CPU温度/功耗需以管理员身份运行"
+                ? "SYSTEM MONITOR · FULL · CPU温度不可用(需安装 PawnIO 驱动)"
                 : "SYSTEM MONITOR · FULL SENSORS";
 
         // ---- CPU ----
@@ -434,6 +476,9 @@ public partial class MainWindow : Window
             txtCpuLoad.Text = $"{cl:F0}%";
             txtCpuLoad.Foreground = LoadBrush(cl);
             SetBar(barCpuFill, (barCpuFill.Parent as Border)?.ActualWidth ?? 0, cl / 100f);
+            ringCpu.Value = cl;
+            ringCpu.Text = $"{cl:F0}%";
+            ringCpu.RingBrush = LoadBrush(cl);
             _cpuHist.Push(cl);
             cpuGraph.Values = _cpuHist.ToArray();
         }
@@ -450,6 +495,9 @@ public partial class MainWindow : Window
             txtGpuLoad.Text = $"{gl:F0}%";
             txtGpuLoad.Foreground = LoadBrush(gl);
             SetBar(barGpuFill, (barGpuFill.Parent as Border)?.ActualWidth ?? 0, gl / 100f);
+            ringGpu.Value = gl;
+            ringGpu.Text = $"{gl:F0}%";
+            ringGpu.RingBrush = LoadBrush(gl);
             _gpuHist.Push(gl);
             gpuGraph.Values = _gpuHist.ToArray();
         }
@@ -473,6 +521,9 @@ public partial class MainWindow : Window
         txtRamPct.Foreground = LoadBrush(s.RamLoad);
         txtRamDetail.Text = $"{s.RamUsedGb:F1} / {s.RamTotalGb:F1} GB";
         SetBar(barRamFill, (barRamFill.Parent as Border)?.ActualWidth ?? 0, s.RamLoad / 100f);
+        ringRam.Value = s.RamLoad;
+        ringRam.Text = $"{s.RamLoad:F0}%";
+        ringRam.RingBrush = LoadBrush(s.RamLoad);
 
         // ---- 网络 ----
         txtNetIf.Text = s.NetInterface;
@@ -588,14 +639,16 @@ public partial class MainWindow : Window
         txtPlanRefresh.Text = remain > 0 ? $"{remain}分钟后刷新" : "刷新中…";
 
         planRows.Children.Clear();
+        bool compact = _orientation == PanelOrientation.Landscape;
         foreach (var p in _codingPlan.Current)
-            planRows.Children.Add(BuildPlanSection(p));
+            planRows.Children.Add(BuildPlanSection(p, compact));
     }
 
-    /// <summary>构建一个供应商区块:标题行(名称+主值) + 每限额窗口一行(标签/用量条/剩余/重置倒计时)。</summary>
-    private static StackPanel BuildPlanSection(PlanStatus p)
+    /// <summary>构建一个供应商区块:标题行(名称+主值) + 限额窗口。
+    /// 竖屏:每窗口一行(标签/用量条/剩余/重置倒计时);横屏:窗口并排成列,压进卡片半格高度。</summary>
+    private static StackPanel BuildPlanSection(PlanStatus p, bool compact)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, compact ? 6 : 10) };
 
         // ---- 标题行 ----
         var head = new Grid { Margin = new Thickness(0, 0, 0, 0) };
@@ -631,63 +684,119 @@ public partial class MainWindow : Window
             return panel;
         }
 
-        // 主值取第一个窗口
+        // 主值取第一个窗口(绝对值型是余额/点数,百分比型与首窗口剩余一致)
         var main = p.Windows.FirstOrDefault();
         head.Children.Add(new TextBlock
         {
             Text = FormatPlanValue(main, p.Unit),
-            FontSize = 22, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
+            FontSize = compact ? 14 : 22,
+            FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
             Foreground = PlanValueBrush(main), HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
         });
         panel.Children.Add(head);
 
-        // ---- 窗口行 ----
-        foreach (var w in p.Windows)
+        var percentWindows = p.Windows.Where(w => w.UsedPercent is not null).ToList();
+        if (percentWindows.Count == 0) return panel;
+
+        // ---- 窗口:横屏并排成列,竖屏逐行 ----
+        if (compact)
         {
-            // 绝对值型(DeepSeek 余额)主值已展示,不再重复成行
-            if (w.UsedPercent is not { } used) continue;
-            var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            row.Children.Add(new TextBlock
+            var columns = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            for (int i = 0; i < percentWindows.Count; i++)
+                columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (int i = 0; i < percentWindows.Count; i++)
             {
-                Text = w.Label, FontSize = 11, Foreground = BrushFromHex("#55648A"),
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
-            });
-
-            // 用量条(百分比型)
-            {
-                var track = new Border
-                {
-                    Height = 4, CornerRadius = new CornerRadius(2), ClipToBounds = true,
-                    Background = BrushFromHex("#1B2743"), VerticalAlignment = VerticalAlignment.Center,
-                };
-                var fill = new Border
-                {
-                    CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left,
-                    Background = PlanValueBrush(w), Width = 0,
-                };
-                track.SizeChanged += (_, e) => fill.Width = Math.Clamp(used / 100.0, 0, 1) * e.NewSize.Width;
-                track.Child = fill;
-                Grid.SetColumn(track, 1);
-                row.Children.Add(track);
+                var cell = BuildPlanWindowCell(percentWindows[i]);
+                Grid.SetColumn(cell, i);
+                columns.Children.Add(cell);
             }
-
-            var value = new TextBlock
-            {
-                Text = FormatPlanValue(w, p.Unit, withReset: true),
-                FontSize = 12, FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#8FA3C8"),
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
-            };
-            Grid.SetColumn(value, 2);
-            row.Children.Add(value);
-
-            panel.Children.Add(row);
+            panel.Children.Add(columns);
+        }
+        else
+        {
+            foreach (var w in percentWindows)
+                panel.Children.Add(BuildPlanWindowRow(w));
         }
         return panel;
+    }
+
+    /// <summary>竖屏窗口行:标签 | 用量条 | 剩余+重置倒计时。</summary>
+    private static Grid BuildPlanWindowRow(QuotaWindow w)
+    {
+        double used = w.UsedPercent ?? 0;
+        var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = w.Label, FontSize = 11, Foreground = BrushFromHex("#55648A"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+        });
+
+        var track = BuildPlanTrack(w, used);
+        Grid.SetColumn(track, 1);
+        row.Children.Add(track);
+
+        var value = new TextBlock
+        {
+            Text = FormatPlanValue(w, null, withReset: true),
+            FontSize = 12, FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#8FA3C8"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(value, 2);
+        row.Children.Add(value);
+        return row;
+    }
+
+    /// <summary>横屏窗口单元:圆环(剩余百分比) + 右侧标签与重置倒计时。</summary>
+    private static FrameworkElement BuildPlanWindowCell(QuotaWindow w)
+    {
+        double used = w.UsedPercent ?? 0;
+        var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+
+        cell.Children.Add(new RingGauge
+        {
+            Width = 42, Height = 42, RingThickness = 5, TextFontSize = 11,
+            Value = used, Text = $"{100 - used:F0}%", RingBrush = PlanValueBrush(w),
+            TrackBrush = BrushFromHex("#1B2743"), TextBrush = BrushFromHex("#EAF2FF"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        texts.Children.Add(new TextBlock
+        {
+            Text = w.Label, FontSize = 12, FontWeight = FontWeights.Bold,
+            Foreground = BrushFromHex("#8FA3C8"),
+        });
+        texts.Children.Add(new TextBlock
+        {
+            Text = FormatResetIn(w.ResetUtc).TrimStart('·', ' '),
+            FontSize = 10, FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#55648A"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        cell.Children.Add(texts);
+        return cell;
+    }
+
+    /// <summary>用量条:按剩余量着色,宽度跟随轨道实际尺寸。</summary>
+    private static Border BuildPlanTrack(QuotaWindow w, double used)
+    {
+        var track = new Border
+        {
+            Height = 4, CornerRadius = new CornerRadius(2), ClipToBounds = true,
+            Background = BrushFromHex("#1B2743"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        var fill = new Border
+        {
+            CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left,
+            Background = PlanValueBrush(w), Width = 0,
+        };
+        track.SizeChanged += (_, e) => fill.Width = Math.Clamp(used / 100.0, 0, 1) * e.NewSize.Width;
+        track.Child = fill;
+        return track;
     }
 
     /// <summary>窗口值文本:百分比型"剩87% · 2.5小时后重置";绝对值型"110.2 点"/"¥110.20"。</summary>
@@ -740,13 +849,14 @@ public partial class MainWindow : Window
         UpdateNotesCard(DateTime.Now);
     }
 
-    /// <summary>每秒刷新:提醒周期到点触发轮换提醒,平时显示倒计时与横屏便签条。</summary>
+    /// <summary>每秒刷新:提醒周期到点触发轮换提醒,平时显示倒计时。
+    /// 卡片在竖屏挂卡片列表、横屏挂左下大格,本方法只负责内容与可见性。</summary>
     private void UpdateNotesCard(DateTime nowLocal)
     {
         if (!Config.Current.ShowNotes)
         {
-            landNotesStrip.Visibility = Visibility.Collapsed;
-            return; // cardNotes 已由 ApplyConfig 折叠
+            cardNotes.Visibility = Visibility.Collapsed;
+            return;
         }
         cardNotes.Visibility = Visibility.Visible;
 
@@ -784,15 +894,6 @@ public partial class MainWindow : Window
             txtNotesReminder.FontWeight = FontWeights.Normal;
         }
         rowNotesReminder.Visibility = Visibility.Visible;
-
-        // 横屏便签条(竖屏卡片在 portCards 里,landscapeRoot 折叠时无布局开销)
-        landNotesStrip.Visibility = Visibility.Visible;
-        txtStripNote.Text = _notes.Note.Length > 0 ? _notes.Note : "—";
-        int done = _notes.Todos.Count(t => t.Done);
-        txtStripTodoLabel.Text = hasTodos ? $"待办 {done}/{_notes.Todos.Count}" : "待办";
-        txtStripTodo.Text = _notes.PendingTodos.FirstOrDefault()?.Text
-                            ?? (hasTodos ? "全部完成 ✓" : "暂无");
-        txtStripReminder.Text = active ? "⏰ " + _activeReminderText : $"{remainMin}分钟后提醒 · {_notes.NextMessagePreview}";
     }
 
     /// <summary>重建待办行:未完成在前,点击整行切换完成态。</summary>
@@ -800,10 +901,10 @@ public partial class MainWindow : Window
     {
         notesTodoPanel.Children.Clear();
         foreach (var t in _notes.Todos.OrderByDescending(t => !t.Done))
-            notesTodoPanel.Children.Add(BuildTodoRow(t));
+            notesTodoPanel.Children.Add(BuildTodoRow(t, _todoFontSize));
     }
 
-    private FrameworkElement BuildTodoRow(TodoItem t)
+    private FrameworkElement BuildTodoRow(TodoItem t, double fontSize)
     {
         var row = new Grid
         {
@@ -836,7 +937,7 @@ public partial class MainWindow : Window
         var txt = new TextBlock
         {
             Text = t.Text,
-            FontSize = 13,
+            FontSize = fontSize,
             Foreground = BrushFromHex(t.Done ? "#55648A" : "#C9D6EE"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(9, 0, 0, 0),

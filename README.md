@@ -13,13 +13,13 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 - **Clock**: live time, date & weekday, uptime
 - **CPU**: large usage readout + 120s history graph, frequency (LHM core clocks, falling back to WMI effective frequency that can exceed the nominal rate under boost), temperature, power draw, fan speed (desktop boards whose SuperIO chip exposes a fan sensor; some mini-PC / laptop EC fans are not readable)
 - **GPU**: usage + history graph, VRAM usage (progress bar), temperature, power draw, fan (rows hide automatically when the iGPU exposes no sensor; AMD iGPU temperature comes from its VR SoC sensor)
-- **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode shows a slim notes strip at the bottom
+- **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode enlarges it into a big FOCUS card (todos clickable)
 - **RAM**: usage percentage + used/total
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
 - **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan remaining quota with reset countdowns
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
-- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered, CPU/GPU take the left half side by side, and RAM+network / weather+quota stack in the right columns; `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
+- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (quota windows render as small rings with reset countdowns); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
 
 ## Run
 
@@ -42,7 +42,7 @@ PerfPanel.exe --landscape / --portrait   # force landscape / portrait (auto = by
 
 Requires the .NET 8 desktop runtime (WindowsDesktop 8.0.x).
 
-**For full temperature/fan/power: right-click → "Run as administrator"** (LibreHardwareMonitor needs its Ring0 driver to read CPU sensors; NVIDIA GPU temperature/VRAM work without admin).
+**For full temperature/fan/power: right-click → "Run as administrator"**, and install the PawnIO driver once (double-click `dist/安装PawnIO驱动-解锁CPU温度.bat` — it installs the driver, swaps in the newest exe and restarts the panel). Since LibreHardwareMonitor 0.9.5, CPU sensors go through [PawnIO](https://github.com/namazso/PawnIO.Setup) — a signed, Memory-Integrity(HVCI)-compatible driver that replaced the old WinRing0-style Ring0 driver Windows now blocks. Without it (or without admin), CPU temperature/power/clock rows stay hidden while NVIDIA/AMD GPU readings (user-mode APIs) keep working; the footer then says `CPU温度不可用(需安装 PawnIO 驱动)`.
 
 ## Autostart (built in, one-line CLI)
 
@@ -99,7 +99,7 @@ Each item has "Save & Test" for instant validation; leave it empty and the panel
 
 ## Notes / todos / focus reminders
 
-The FOCUS card (portrait) or bottom notes strip (landscape) turns the secondary display into a focus board:
+The FOCUS card (a large card spanning the lower-left half in landscape) turns the secondary display into a focus board:
 
 - **Sticky note**: your one-line current goal (e.g. "focus on Calculus chapter 3"), always visible in amber
 - **Todos**: click a row right on the panel to toggle done (finished items get struck through and dimmed); pending items sort first
