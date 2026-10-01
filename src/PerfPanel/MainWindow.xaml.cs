@@ -4,6 +4,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PerfPanel.Controls;
 using PerfPanel.Models;
@@ -50,6 +51,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        try
+        {
+            Icon = BitmapFrame.Create(new Uri("pack://application:,,,/app.ico")); // 窗口化调试时的标题栏/任务栏图标
+        }
+        catch { }
         _notes.Load();
         var args = Environment.GetCommandLineArgs();
         _windowed = args.Any(a =>
