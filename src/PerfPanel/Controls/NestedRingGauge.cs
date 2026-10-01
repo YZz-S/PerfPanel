@@ -7,7 +7,8 @@ namespace PerfPanel.Controls;
 /// <summary>一条环:用量百分比 + 颜色(嵌套圆环的一层)。</summary>
 public sealed record RingSlice(double UsedPercent, Brush Brush);
 
-/// <summary>嵌套圆环用量表:多条环由外到内依次排列(如 5h/周/月),每条含暗色轨道与自顶部顺时针的用量弧。</summary>
+/// <summary>嵌套圆环用量表:多条环由外到内依次排列(如 5h/周/月),每条含暗色轨道与自顶部顺时针的用量弧;
+/// 中心预留空洞显示文字(如剩余%或金额)。</summary>
 public class NestedRingGauge : FrameworkElement
 {
     public static readonly DependencyProperty RingsProperty = DependencyProperty.Register(
@@ -18,6 +19,18 @@ public class NestedRingGauge : FrameworkElement
         nameof(TrackBrush), typeof(Brush), typeof(NestedRingGauge),
         new FrameworkPropertyMetadata(new SolidColorBrush(Color.FromRgb(0x1B, 0x27, 0x43)),
             FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty CenterTextProperty = DependencyProperty.Register(
+        nameof(CenterText), typeof(string), typeof(NestedRingGauge),
+        new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty CenterBrushProperty = DependencyProperty.Register(
+        nameof(CenterBrush), typeof(Brush), typeof(NestedRingGauge),
+        new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty CenterFontSizeProperty = DependencyProperty.Register(
+        nameof(CenterFontSize), typeof(double), typeof(NestedRingGauge),
+        new FrameworkPropertyMetadata(10.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
     /// <summary>由外到内的环(第一个 = 最外圈)。</summary>
     public IReadOnlyList<RingSlice> Rings
@@ -32,24 +45,46 @@ public class NestedRingGauge : FrameworkElement
         set => SetValue(TrackBrushProperty, value);
     }
 
+    public string CenterText
+    {
+        get => (string)GetValue(CenterTextProperty);
+        set => SetValue(CenterTextProperty, value);
+    }
+
+    public Brush CenterBrush
+    {
+        get => (Brush)GetValue(CenterBrushProperty);
+        set => SetValue(CenterBrushProperty, value);
+    }
+
+    public double CenterFontSize
+    {
+        get => (double)GetValue(CenterFontSizeProperty);
+        set => SetValue(CenterFontSizeProperty, value);
+    }
+
+    private static readonly Typeface CenterTypeface = new(new FontFamily("Consolas"), FontStyles.Normal,
+        FontWeights.Bold, FontStretches.Normal);
+
     protected override void OnRender(DrawingContext dc)
     {
         var rings = Rings;
-        int n = rings.Count;
-        if (n == 0) return;
+        int n = Math.Max(1, rings.Count);
 
         double side = Math.Min(ActualWidth, ActualHeight);
         if (side <= 0) return;
+        var center = new Point(ActualWidth / 2, ActualHeight / 2);
         double outerR = side / 2 - 1;
-        double band = outerR / n;
+        // 中心留洞放文字,环带均分剩余半径;单环时厚度封顶避免过粗
+        double holeR = outerR * 0.36;
+        double band = (outerR - holeR) / n;
 
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < rings.Count; i++)
         {
             double r = outerR - (i + 0.5) * band;
-            double th = Math.Max(2, band - 2.5);
+            double th = Math.Min(Math.Max(2, band - 2.5), 7);
 
             var trackPen = new Pen(TrackBrush, th);
-            var center = new Point(ActualWidth / 2, ActualHeight / 2);
             dc.DrawEllipse(null, trackPen, center, r, r);
 
             double pct = Math.Clamp(rings[i].UsedPercent, 0, 100);
@@ -70,5 +105,12 @@ public class NestedRingGauge : FrameworkElement
             };
             dc.DrawGeometry(null, valuePen, geo);
         }
+
+        string text = CenterText ?? "";
+        if (text.Length == 0) return;
+        double dip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            CenterTypeface, CenterFontSize, CenterBrush, dip);
+        dc.DrawText(ft, new Point(center.X - ft.Width / 2, center.Y - ft.Height / 2));
     }
 }

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -683,21 +684,12 @@ public partial class MainWindow : Window
             .Select(p => compact ? BuildCompactPlanSection(p) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
-        // 横屏多供应商:两栏排布保证不滚动(单栏 ~140px 装不下三段)
-        if (compact && sections.Count > 2)
+        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐
+        if (compact && sections.Count > 1)
         {
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var col0 = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
-            var col1 = new StackPanel();
-            int split = (sections.Count + 1) / 2;
-            for (int i = 0; i < sections.Count; i++)
-                (i < split ? col0 : col1).Children.Add(sections[i]);
-            Grid.SetColumn(col0, 0);
-            Grid.SetColumn(col1, 1);
-            grid.Children.Add(col0);
-            grid.Children.Add(col1);
+            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 4) };
+            foreach (var s in sections)
+                grid.Children.Add(s);
             planRows.Children.Add(grid);
         }
         else
@@ -764,69 +756,71 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    /// <summary>横屏供应商区块(紧凑):嵌套圆环(5h/周/月 由外到内) + 图例,免滚动一眼全览。
-    /// 百分比窗口画进环里;纯绝对值型(如 DeepSeek 余额)只出图例行。</summary>
+    /// <summary>横屏供应商小节(竖版排列):圆环在上(所有供应商同一行同高,DeepSeek 为常满环显示金额),
+    /// 名称与限额图例在下。</summary>
     private static FrameworkElement BuildCompactPlanSection(PlanStatus p)
     {
-        var row = new Grid { Margin = new Thickness(0, 0, 0, 5) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var legend = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        var cell = new StackPanel { Margin = new Thickness(0, 0, 10, 0) };
 
         var nameLine = new TextBlock
         {
-            FontSize = 12, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            FontSize = 11, FontWeight = FontWeights.Bold, Foreground = BrushFromHex("#C9D6EE"),
+            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
         };
+
         if (!p.Ok)
         {
             nameLine.Text = $"{p.Name} ✗";
             nameLine.Foreground = BrushFromHex("#F87171");
-            legend.Children.Add(nameLine);
-            legend.Children.Add(new TextBlock
+            nameLine.HorizontalAlignment = HorizontalAlignment.Left;
+            cell.Children.Add(nameLine);
+            cell.Children.Add(new TextBlock
             {
                 Text = p.Error ?? "查询失败", FontSize = 10, Foreground = BrushFromHex("#F87171"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
-            row.Children.Add(legend);
-            return row;
+            return cell;
         }
 
         nameLine.Text = p.PlanName is { Length: > 0 } plan ? $"{p.Name} · {plan}" : p.Name;
         if (p.StaleError is { Length: > 0 })
             nameLine.Text += " · 旧数据";
-        legend.Children.Add(nameLine);
 
         var windows = p.Windows.Where(w => w.UsedPercent is not null).ToList();
+        NestedRingGauge ring;
         if (windows.Count > 0)
         {
-            var rings = new NestedRingGauge
+            // 环心显示最紧张的窗口(剩余最少)的剩余百分比
+            var tightest = windows.OrderBy(w => 100 - (w.UsedPercent ?? 0)).First();
+            ring = new NestedRingGauge
             {
-                Width = 46, Height = 46,
+                Width = 56, Height = 56, CenterFontSize = 9,
                 Rings = windows.Select(w => new RingSlice(w.UsedPercent ?? 0, PlanValueBrush(w))).ToList(),
-                VerticalAlignment = VerticalAlignment.Center,
+                CenterText = $"剩{100 - (tightest.UsedPercent ?? 0):F0}%",
+                CenterBrush = PlanValueBrush(tightest),
+                HorizontalAlignment = HorizontalAlignment.Center,
             };
-            Grid.SetColumn(rings, 0);
-            row.Children.Add(rings);
-
-            for (int i = 0; i < windows.Count; i++)
-                legend.Children.Add(BuildCompactLegendLine(windows[i]));
         }
         else
         {
+            // 绝对值型(DeepSeek 余额):常满环 + 金额居中
             var main = p.Windows.FirstOrDefault();
-            legend.Children.Add(new TextBlock
+            ring = new NestedRingGauge
             {
-                FontSize = 15, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
-                Foreground = PlanValueBrush(main),
-                Text = FormatPlanValue(main, p.Unit),
-            });
+                Width = 56, Height = 56, CenterFontSize = 10,
+                Rings = [new RingSlice(100, PlanValueBrush(main))],
+                CenterText = FormatPlanValue(main, p.Unit),
+                CenterBrush = PlanValueBrush(main),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
         }
+        cell.Children.Add(ring);
+        cell.Children.Add(nameLine);
 
-        Grid.SetColumn(legend, 1);
-        row.Children.Add(legend);
-        return row;
+        foreach (var w in windows)
+            cell.Children.Add(BuildCompactLegendLine(w));
+        return cell;
     }
 
     /// <summary>横屏图例行:色点(对应环) + 标签 + 剩余% + 重置倒计时。</summary>
