@@ -42,7 +42,7 @@ PerfPanel.exe --landscape / --portrait   # 强制横版 / 竖版(auto 按副屏�
 
 要求:.NET 8 桌面运行时(WindowsDesktop 8.0.x)。
 
-**要完整温度/风扇/功耗:右键"以管理员身份运行",并安装一次 PawnIO 驱动**(双击 `dist/安装PawnIO驱动-解锁CPU温度.bat` —— 自动装驱动、换新 exe 并重启面板)。LibreHardwareMonitor 0.9.5 起,CPU 传感器改走 [PawnIO](https://github.com/namazso/PawnIO.Setup) —— 一个签名的、兼容"内存完整性(HVCI)"的内核驱动,替代了已被 Windows 拦截的旧 WinRing0 系 Ring0 驱动。未装 PawnIO(或未提权)时 CPU 温度/功耗/频率行自动隐藏,AMD/NVIDIA GPU 读数(用户态接口)不受影响;页脚会提示 `CPU温度不可用(需安装 PawnIO 驱动)`。
+**要完整温度/风扇/功耗:右键"以管理员身份运行",并安装一次 PawnIO 驱动**(双击 `dist/安装PawnIO驱动-解锁CPU温度.bat` —— 自动装驱动、换新 exe 并重启面板)。**注意:安装包不入库(`.gitignore` 排除了 `dist/tools/`),新克隆的仓库需先从 [PawnIO releases](https://github.com/namazso/PawnIO.Setup/releases) 下载 `PawnIO_setup.exe` 放进 `dist/tools/`,否则脚本会跳过安装直接结束(表现为窗口一闪而过、温度仍不显示)。**LibreHardwareMonitor 0.9.5 起,CPU 传感器改走 [PawnIO](https://github.com/namazso/PawnIO.Setup) —— 一个签名的、兼容"内存完整性(HVCI)"的内核驱动,替代了已被 Windows 拦截的旧 WinRing0 系 Ring0 驱动。未装 PawnIO(或未提权)时 CPU 温度/功耗/频率行自动隐藏,AMD/NVIDIA GPU 读数(用户态接口)不受影响;页脚会提示 `CPU温度不可用(需安装 PawnIO 驱动)`,此时 CPU 频率为 WMI 有效频率估算——部分平台该计数器不刷新,数字可能长时间不变(识别降级模式的一条线索)。
 
 ## 应用图标与桌面快捷方式
 
@@ -131,6 +131,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ```
 
 > 仓库不含构建产物。`dist/` 下的 `.bat` 脚本在**脚本所在目录**查找 `PerfPanel.exe`,需把 publish 出的 exe 复制进 `dist/` 后再双击使用(开机自启/设置城市等命令行参数对 `dotnet run` 同样有效,写在 `--` 之后即可)。
+>
+> 更新 README 效果图:在 exe 旁放 `shot-request.txt`(首行=输出 PNG 路径),启动 18 秒后面板自动按设计尺寸渲染整窗存为 PNG,并删除请求文件——不受屏幕捕获/DPI 影响,管理员与否均可用。
 
 ## 架构
 
@@ -151,7 +153,7 @@ src/PerfPanel/
 
 改进需求(多传感器/外观自定义/横竖屏/待办等)的设计方案见 [docs/设计方案.md](docs/设计方案.md)。
 
-- 数据源:LibreHardwareMonitorLib **0.9.4**(锁定勿升:0.9.5+ 在部分 AMD 笔记本如 5800H 上 CPU 传感器值恒 0;MIT)+ Windows WMI
+- 数据源:LibreHardwareMonitorLib **0.9.6**(CPU 传感器经 PawnIO 内核驱动读取;历史备注:曾因 0.9.5 在部分 AMD 笔记本如 5800H 上 CPU 传感器恒 0 而锁定 0.9.4,后 0.9.6 改用 PawnIO 替代被 Windows 拦截的 WinRing0,问题不复现,MIT)+ Windows WMI
 - 刷新:DispatcherTimer 1 秒,后台线程采样,UI 线程仅渲染
 - 实测占用:私有内存约 130MB、工作集约 190MB(WPF + LHM + WMI 常态水平,比浏览器方案省一半)
 

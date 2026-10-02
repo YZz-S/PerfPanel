@@ -42,7 +42,7 @@ PerfPanel.exe --landscape / --portrait   # force landscape / portrait (auto = by
 
 Requires the .NET 8 desktop runtime (WindowsDesktop 8.0.x).
 
-**For full temperature/fan/power: right-click → "Run as administrator"**, and install the PawnIO driver once (double-click `dist/安装PawnIO驱动-解锁CPU温度.bat` — it installs the driver, swaps in the newest exe and restarts the panel). Since LibreHardwareMonitor 0.9.5, CPU sensors go through [PawnIO](https://github.com/namazso/PawnIO.Setup) — a signed, Memory-Integrity(HVCI)-compatible driver that replaced the old WinRing0-style Ring0 driver Windows now blocks. Without it (or without admin), CPU temperature/power/clock rows stay hidden while NVIDIA/AMD GPU readings (user-mode APIs) keep working; the footer then says `CPU温度不可用(需安装 PawnIO 驱动)`.
+**For full temperature/fan/power: right-click → "Run as administrator"**, and install the PawnIO driver once (double-click `dist/安装PawnIO驱动-解锁CPU温度.bat` — it installs the driver, swaps in the newest exe and restarts the panel). **Note: the installer itself is not committed (`.gitignore` excludes `dist/tools/`), so in a fresh clone you must first download `PawnIO_setup.exe` from the [PawnIO releases](https://github.com/namazso/PawnIO.Setup/releases) into `dist/tools/` — otherwise the script skips the install and exits right away (it flashes by and temperature still doesn't show).** Since LibreHardwareMonitor 0.9.5, CPU sensors go through [PawnIO](https://github.com/namazso/PawnIO.Setup) — a signed, Memory-Integrity(HVCI)-compatible driver that replaced the old WinRing0-style Ring0 driver Windows now blocks. Without it (or without admin), CPU temperature/power/clock rows stay hidden while NVIDIA/AMD GPU readings (user-mode APIs) keep working; the footer then says `CPU温度不可用(需安装 PawnIO 驱动)`, and the CPU frequency falls back to a WMI effective-frequency estimate that on some platforms never refreshes, so the number can stay frozen (a tell-tale sign of the degraded mode).
 
 ## App icon & desktop shortcut
 
@@ -131,6 +131,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ```
 
 > The repo ships no build output. The `.bat` scripts in `dist/` look for `PerfPanel.exe` in their own directory — copy the published exe into `dist/` before double-clicking them. (CLI flags such as `--autostart-on` also work with `dotnet run`; put them after `--`.)
+>
+> To refresh the README screenshot: put a `shot-request.txt` next to the exe (first line = output PNG path); 18 s after startup the panel renders the whole window at design size, saves the PNG and deletes the request file — unaffected by screen capture or DPI, works with or without admin.
 
 ## Architecture
 
@@ -151,7 +153,7 @@ src/PerfPanel/
 
 Design notes for future improvements (more sensors, appearance customization, orientation, todos, …) live in [docs/设计方案.md](docs/设计方案.md) (Chinese).
 
-- Data sources: LibreHardwareMonitorLib **0.9.4** (pinned on purpose: 0.9.5+ reads constant 0 for CPU sensors on some AMD laptops such as the 5800H; MIT) + Windows WMI
+- Data sources: LibreHardwareMonitorLib **0.9.6** (CPU sensors read through the PawnIO kernel driver; historical note: 0.9.4 was once pinned because 0.9.5 read constant 0 for CPU sensors on some AMD laptops such as the 5800H — 0.9.6 replaced the Windows-blocked WinRing0 driver with PawnIO and the issue is gone; MIT) + Windows WMI
 - Refresh: 1-second DispatcherTimer, sampling on background threads, render-only UI thread
 - Measured footprint: ~130 MB private / ~190 MB working set (typical for WPF + LHM + WMI; about half of browser-based alternatives)
 
