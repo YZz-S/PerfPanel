@@ -1066,6 +1066,7 @@ public partial class MainWindow : Window
         {
             _activeReminderText = _notes.TakeReminder(utcNow);
             _reminderActiveUntilUtc = utcNow.AddSeconds(90);
+            ToastService.Show("reminder", "⏰ 专注提醒", _activeReminderText); // 系统通知:横幅 + 进通知中心
         }
         bool active = utcNow < _reminderActiveUntilUtc;
         int remainMin = (int)Math.Ceiling((_notes.LastReminderUtc.AddMinutes(_notes.ReminderMinutes) - utcNow).TotalMinutes);
@@ -1113,7 +1114,11 @@ public partial class MainWindow : Window
         string? evt = _notes.PomoAdvance(utcNow);
         if (evt != null)
         {
-            try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+            // 系统通知:横幅 + 进通知中心(失败自动降级系统提示音)
+            if (evt == "work-done")
+                ToastService.Show("pomodoro", "✅ 专注完成!", $"开始休息 {_notes.PomodoroBreakMinutes} 分钟");
+            else
+                ToastService.Show("pomodoro", "🍅 休息结束", "点「▶ 开始」进入下一轮专注");
             _pomoFlashText = evt == "work-done"
                 ? $"✅ 专注完成!自动休息 {_notes.PomodoroBreakMinutes} 分钟"
                 : "🍅 休息结束,点「▶ 开始」进入下一轮专注";
