@@ -36,6 +36,27 @@ internal static class MonitorHelper
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    /// <summary>取 hwnd 所在显示器的工作区(去任务栏),换算为 DIP(WPF 单位)。
+    /// 混合 DPI 下物理像素与 DIP 不可直接混用,这里按该窗口实际 DPI 归一。</summary>
+    public static (double Width, double Height)? GetWorkAreaDip(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return null;
+        var m = MonitorFromWindow(hwnd, 2 /*MONITOR_DEFAULTTONEAREST*/);
+        if (m == IntPtr.Zero) return null;
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(m, ref mi)) return null;
+        double dpi = GetDpiForWindow(hwnd);
+        if (dpi <= 0) dpi = 96;
+        return ((mi.rcWork.Right - mi.rcWork.Left) * 96.0 / dpi,
+                (mi.rcWork.Bottom - mi.rcWork.Top) * 96.0 / dpi);
+    }
+
     public static List<MonitorBounds> GetAll()
     {
         var list = new List<MonitorBounds>();

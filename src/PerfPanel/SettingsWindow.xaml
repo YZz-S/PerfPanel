@@ -1,7 +1,7 @@
 <Window x:Class="PerfPanel.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PerfPanel 设置" Width="470" SizeToContent="Height"
+        Title="PerfPanel 设置" Width="560" Height="760"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         Background="#0A0F1E" FontFamily="Microsoft YaHei UI" Topmost="True">
 
@@ -41,252 +41,330 @@
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="#8FA3C8"/>
         </Style>
+
+        <!-- 深色分页标签 -->
+        <Style x:Key="DarkTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="#8FA3C8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="bd" Background="#111A2E" CornerRadius="7,7,0,0"
+                                Padding="13,8" Margin="0,0,3,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#16233F"/>
+                                <Setter Property="Foreground" Value="#C9D6EE"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1B2743"/>
+                                <Setter Property="Foreground" Value="#22D3EE"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DarkTabControl" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TabPanel x:Name="HeaderPanel" IsItemsHost="True" Background="Transparent" Grid.Row="0"/>
+                            <Border x:Name="ContentPanel" Grid.Row="1" Background="Transparent"
+                                    BorderBrush="#223052" BorderThickness="1"
+                                    CornerRadius="0,8,8,8" Margin="0,6,0,0">
+                                <ContentPresenter ContentSource="SelectedContent"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-    <StackPanel Margin="18">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-        <!-- ============ 数据源 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="数据源" Style="{StaticResource SectionTitleStyle}"/>
-                <Grid Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtAmapKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnSaveKey" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-                <TextBlock x:Name="lblKeyStatus" Text="留空 = 使用 Open-Meteo 免费国际源(国内网络下定位/搜索可能不稳定)"
-                           Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <TextBlock Text="高德 Key 申请:console.amap.com → 应用管理 → 创建『Web 服务』类型 Key"
-                           FontSize="11" Foreground="#55648A" Margin="0,6,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
+        <TabControl Grid.Row="0" Style="{StaticResource DarkTabControl}">
 
-        <!-- ============ 天气 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="天气" Style="{StaticResource SectionTitleStyle}"/>
-                <Grid Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtCity" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnSetCity" Grid.Column="1" Content="设置" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                    <Button x:Name="btnAutoCity" Grid.Column="2" Content="自动定位" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-                <TextBlock x:Name="lblCityStatus" Text="当前位置:…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0"/>
+            <!-- ============ 数据源 / 天气 ============ -->
+            <TabItem Header="数据源 / 天气" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <StackPanel>
 
-                <Grid Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="刷新周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="cmbRefresh" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0"
-                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
-                        <ComboBoxItem Content="10 分钟" Tag="10"/>
-                        <ComboBoxItem Content="15 分钟" Tag="15"/>
-                        <ComboBoxItem Content="30 分钟" Tag="30"/>
-                        <ComboBoxItem Content="60 分钟" Tag="60"/>
-                    </ComboBox>
-                </Grid>
-                <CheckBox x:Name="chkShowWeather" Content="显示天气卡片" Style="{StaticResource CheckStyle}"/>
-            </StackPanel>
-        </Border>
+                        <!-- 数据源 -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="数据源" Style="{StaticResource SectionTitleStyle}"/>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="txtAmapKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                    <Button x:Name="btnSaveKey" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock x:Name="lblKeyStatus" Text="留空 = 使用 Open-Meteo 免费国际源(国内网络下定位/搜索可能不稳定)"
+                                           Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="高德 Key 申请:console.amap.com → 应用管理 → 创建『Web 服务』类型 Key"
+                                           FontSize="11" Foreground="#55648A" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
 
-        <!-- ============ Coding Plan 额度 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="Coding Plan 额度" Style="{StaticResource SectionTitleStyle}"/>
-                <CheckBox x:Name="chkShowPlan" Content="显示额度卡片(15 分钟自动刷新)" Style="{StaticResource CheckStyle}"/>
+                        <!-- 天气 -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="天气" Style="{StaticResource SectionTitleStyle}"/>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="txtCity" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                    <Button x:Name="btnSetCity" Grid.Column="1" Content="设置" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                                    <Button x:Name="btnAutoCity" Grid.Column="2" Content="自动定位" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock x:Name="lblCityStatus" Text="当前位置:…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0"/>
 
-                <TextBlock Text="DeepSeek API Key(api.deepseek.com,查账户余额)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtDsKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnDsTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="刷新周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="cmbRefresh" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0">
+                                        <ComboBoxItem Content="10 分钟" Tag="10"/>
+                                        <ComboBoxItem Content="15 分钟" Tag="15"/>
+                                        <ComboBoxItem Content="30 分钟" Tag="30"/>
+                                        <ComboBoxItem Content="60 分钟" Tag="60"/>
+                                    </ComboBox>
+                                </Grid>
+                                <CheckBox x:Name="chkShowWeather" Content="显示天气卡片" Style="{StaticResource CheckStyle}"/>
+                            </StackPanel>
+                        </Border>
 
-                <TextBlock Text="智谱 GLM API Key(open.bigmodel.cn,查 Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtZpKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnZpTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-
-                <TextBlock Text="火山引擎 AccessKey ID / Secret(查 Agent/Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtVolcAk" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnVolcTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-                <TextBox x:Name="txtVolcSk" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,8,0,0"
-                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-
-                <TextBlock Text="MiMo 控制台 Cookie(查按量付费余额 + Token Plan 套餐用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtMimoCookie" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
-                             ToolTip="整段 Cookie 请求头,粘贴后自动保存"/>
-                    <Button x:Name="btnMimoTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-                <TextBlock Text="获取:登录 platform.xiaomimimo.com → F12 开发者工具 → Network → 刷新 → 点任意 /api/v1 请求 → Request Headers → 复制整行 Cookie(必须含 api-platform_serviceToken 与 userId)。tp-/sk- API Key 查不了,只能用登录 Cookie;过期后重新复制。留空 = 不查询。"
-                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
-
-                <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱填各自开放平台的 API Key;MiMo 粘贴控制台 Cookie。均留空 = 不查询该项。"
-                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
-
-        <!-- ============ 便签 / 专注提醒 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="便签 / 专注提醒" Style="{StaticResource SectionTitleStyle}"/>
-                <CheckBox x:Name="chkShowNotes" Content="显示便签待办卡片(竖屏)/ 便签条(横屏)" Style="{StaticResource CheckStyle}"/>
-                <CheckBox x:Name="chkShowPomodoro" Content="显示番茄钟计时(便签卡内,专注/休息轮换)" Style="{StaticResource CheckStyle}"/>
-
-                <Grid Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="专注" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="cmbPomoWork" Grid.Column="1" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0"
-                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
-                        <ComboBoxItem Content="15 分钟" Tag="15"/>
-                        <ComboBoxItem Content="25 分钟" Tag="25"/>
-                        <ComboBoxItem Content="45 分钟" Tag="45"/>
-                        <ComboBoxItem Content="50 分钟" Tag="50"/>
-                    </ComboBox>
-                    <TextBlock Text="休息" Grid.Column="2" Style="{StaticResource LabelStyle}" VerticalAlignment="Center" Margin="14,0,0,0"/>
-                    <ComboBox x:Name="cmbPomoBreak" Grid.Column="3" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0"
-                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
-                        <ComboBoxItem Content="3 分钟" Tag="3"/>
-                        <ComboBoxItem Content="5 分钟" Tag="5"/>
-                        <ComboBoxItem Content="10 分钟" Tag="10"/>
-                        <ComboBoxItem Content="15 分钟" Tag="15"/>
-                    </ComboBox>
-                </Grid>
-
-                <TextBlock Text="便签(一句话,如:专注复习《高数》第三章)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <TextBox x:Name="txtNote" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
-                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-
-                <TextBlock Text="待办清单(面板上点击整行即可勾选完成)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="txtNewTodo" Height="32" VerticalContentAlignment="Center" Padding="8,0"
-                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                    <Button x:Name="btnAddTodo" Grid.Column="1" Content="添加" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
-                </Grid>
-                <Border Height="110" Margin="0,8,0,0" Background="#0F1729"
-                        BorderBrush="#223052" BorderThickness="1" CornerRadius="4">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="todoList" Margin="6"/>
-                    </ScrollViewer>
-                </Border>
-
-                <Grid Margin="0,12,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="提醒周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="cmbReminder" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0"
-                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
-                        <ComboBoxItem Content="15 分钟" Tag="15"/>
-                        <ComboBoxItem Content="30 分钟" Tag="30"/>
-                        <ComboBoxItem Content="45 分钟" Tag="45"/>
-                        <ComboBoxItem Content="60 分钟" Tag="60"/>
-                        <ComboBoxItem Content="90 分钟" Tag="90"/>
-                    </ComboBox>
-                </Grid>
-
-                <TextBlock Text="轮换提醒语(每行一条,到点在面板高亮提醒)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <TextBox x:Name="txtMessages" Height="72" AcceptsReturn="True" TextWrapping="Wrap" Padding="8,6" Margin="0,6,0,0"
-                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
-                         VerticalScrollBarVisibility="Auto"/>
-                <TextBlock Text="便签/待办保存在 exe 旁 notes.json;留空提醒语 = 不提醒。"
-                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
-
-        <!-- ============ 界面 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="界面" Style="{StaticResource SectionTitleStyle}"/>
-                <Grid Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="屏幕方向" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="cmbOrientation" Grid.Column="1" HorizontalAlignment="Left" Width="180" Margin="12,0,0,0"
-                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
-                        <ComboBoxItem Content="自动(按副屏形状)" Tag="auto"/>
-                        <ComboBoxItem Content="竖屏 440×1920" Tag="portrait"/>
-                        <ComboBoxItem Content="横屏 1920×440" Tag="landscape"/>
-                    </ComboBox>
-                </Grid>
-                <Grid Margin="0,10,0,0">
-                    <TextBlock Text="界面缩放" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblScale" Text="100%" Style="{StaticResource LabelStyle}"
-                               HorizontalAlignment="Right" FontFamily="Consolas"/>
-                </Grid>
-                <Slider x:Name="sldScale" Minimum="0.8" Maximum="1.3" LargeChange="0.05" SmallChange="0.05"
-                        TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
-                <CheckBox x:Name="chkShowHint" Content="显示操作提示(拖动/方向键/S 设置/Esc 退出)" Style="{StaticResource CheckStyle}"/>
-                <CheckBox x:Name="chkShowFooter" Content="显示底部状态行(SYSTEM MONITOR · FULL SENSORS)" Style="{StaticResource CheckStyle}"/>
-
-                <TextBlock Text="左上角标题文字(可改任意内容/emoji,留空 = 隐藏)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
-                <TextBox x:Name="txtBrand" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
-                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-            </StackPanel>
-        </Border>
-
-        <!-- ============ 开机自启 ============ -->
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Text="开机自启" Style="{StaticResource SectionTitleStyle}"/>
-                <Grid Margin="0,10,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <Button x:Name="btnAutoOn" Content="开启" Style="{StaticResource BtnStyle}"/>
-                        <Button x:Name="btnAutoOff" Content="关闭" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
                     </StackPanel>
-                </Grid>
-                <TextBlock x:Name="lblAutoStatus" Text="…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
+                </ScrollViewer>
+            </TabItem>
 
-        <Button x:Name="btnClose" Content="关 闭" Style="{StaticResource BtnStyle}" Margin="0,6,0,8"
-                Background="#24506E"/>
+            <!-- ============ Coding Plan 额度 ============ -->
+            <TabItem Header="Coding Plan 额度" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Coding Plan 额度" Style="{StaticResource SectionTitleStyle}"/>
+                            <CheckBox x:Name="chkShowPlan" Content="显示额度卡片(15 分钟自动刷新)" Style="{StaticResource CheckStyle}"/>
 
-    </StackPanel>
+                            <TextBlock Text="DeepSeek API Key(api.deepseek.com,查账户余额)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtDsKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                <Button x:Name="btnDsTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+
+                            <TextBlock Text="智谱 GLM API Key(open.bigmodel.cn,查 Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtZpKey" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                <Button x:Name="btnZpTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+
+                            <TextBlock Text="火山引擎 AccessKey ID / Secret(查 Agent/Coding Plan 用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtVolcAk" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                <Button x:Name="btnVolcTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+                            <TextBox x:Name="txtVolcSk" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,8,0,0"
+                                     Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+
+                            <TextBlock Text="MiMo 控制台 Cookie(查按量付费余额 + Token Plan 套餐用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtMimoCookie" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
+                                         ToolTip="整段 Cookie 请求头,粘贴后自动保存"/>
+                                <Button x:Name="btnMimoTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+                            <TextBlock Text="获取:登录 platform.xiaomimimo.com → F12 开发者工具 → Network → 刷新 → 点任意 /api/v1 请求 → Request Headers → 复制整行 Cookie(必须含 api-platform_serviceToken 与 userId)。tp-/sk- API Key 查不了,只能用登录 Cookie;过期后重新复制。留空 = 不查询。"
+                                       FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱填各自开放平台的 API Key;MiMo 粘贴控制台 Cookie。均留空 = 不查询该项。"
+                                       FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 便签 / 专注提醒 ============ -->
+            <TabItem Header="便签 / 专注提醒" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="便签 / 专注提醒" Style="{StaticResource SectionTitleStyle}"/>
+                            <CheckBox x:Name="chkShowNotes" Content="显示便签待办卡片(竖屏)/ 便签条(横屏)" Style="{StaticResource CheckStyle}"/>
+                            <CheckBox x:Name="chkShowPomodoro" Content="显示番茄钟计时(便签卡内,专注/休息轮换)" Style="{StaticResource CheckStyle}"/>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="专注" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="cmbPomoWork" Grid.Column="1" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0">
+                                    <ComboBoxItem Content="15 分钟" Tag="15"/>
+                                    <ComboBoxItem Content="25 分钟" Tag="25"/>
+                                    <ComboBoxItem Content="45 分钟" Tag="45"/>
+                                    <ComboBoxItem Content="50 分钟" Tag="50"/>
+                                </ComboBox>
+                                <TextBlock Text="休息" Grid.Column="2" Style="{StaticResource LabelStyle}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                                <ComboBox x:Name="cmbPomoBreak" Grid.Column="3" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0">
+                                    <ComboBoxItem Content="3 分钟" Tag="3"/>
+                                    <ComboBoxItem Content="5 分钟" Tag="5"/>
+                                    <ComboBoxItem Content="10 分钟" Tag="10"/>
+                                    <ComboBoxItem Content="15 分钟" Tag="15"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <TextBlock Text="便签(一句话,如:专注复习《高数》第三章)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <TextBox x:Name="txtNote" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
+                                     Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+
+                            <TextBlock Text="待办清单(面板上点击整行即可勾选完成)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtNewTodo" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                <Button x:Name="btnAddTodo" Grid.Column="1" Content="添加" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+                            <Border Height="110" Margin="0,8,0,0" Background="#0F1729"
+                                    BorderBrush="#223052" BorderThickness="1" CornerRadius="4">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="todoList" Margin="6"/>
+                                </ScrollViewer>
+                            </Border>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="提醒周期" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="cmbReminder" Grid.Column="1" HorizontalAlignment="Left" Width="110" Margin="12,0,0,0">
+                                    <ComboBoxItem Content="15 分钟" Tag="15"/>
+                                    <ComboBoxItem Content="30 分钟" Tag="30"/>
+                                    <ComboBoxItem Content="45 分钟" Tag="45"/>
+                                    <ComboBoxItem Content="60 分钟" Tag="60"/>
+                                    <ComboBoxItem Content="90 分钟" Tag="90"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <TextBlock Text="轮换提醒语(每行一条,到点在面板高亮提醒)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <TextBox x:Name="txtMessages" Height="72" AcceptsReturn="True" TextWrapping="Wrap" Padding="8,6" Margin="0,6,0,0"
+                                     Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
+                                     VerticalScrollBarVisibility="Auto"/>
+                            <TextBlock Text="便签/待办保存在 exe 旁 notes.json;留空提醒语 = 不提醒。"
+                                       FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 界面 / 自启 ============ -->
+            <TabItem Header="界面 / 自启" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <StackPanel>
+
+                        <!-- 界面 -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="界面" Style="{StaticResource SectionTitleStyle}"/>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="屏幕方向" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="cmbOrientation" Grid.Column="1" HorizontalAlignment="Left" Width="180" Margin="12,0,0,0">
+                                        <ComboBoxItem Content="自动(按副屏形状)" Tag="auto"/>
+                                        <ComboBoxItem Content="竖屏 440×1920" Tag="portrait"/>
+                                        <ComboBoxItem Content="横屏 1920×440" Tag="landscape"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid Margin="0,10,0,0">
+                                    <TextBlock Text="界面缩放" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="lblScale" Text="100%" Style="{StaticResource LabelStyle}"
+                                               HorizontalAlignment="Right" FontFamily="Consolas"/>
+                                </Grid>
+                                <Slider x:Name="sldScale" Minimum="0.8" Maximum="1.3" LargeChange="0.05" SmallChange="0.05"
+                                        TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
+                                <CheckBox x:Name="chkShowHint" Content="显示操作提示(拖动/方向键/S 设置/Esc 退出)" Style="{StaticResource CheckStyle}"/>
+                                <CheckBox x:Name="chkShowFooter" Content="显示底部状态行(SYSTEM MONITOR · FULL SENSORS)" Style="{StaticResource CheckStyle}"/>
+
+                                <TextBlock Text="左上角标题文字(可改任意内容/emoji,留空 = 隐藏)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                                <TextBox x:Name="txtBrand" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 开机自启 -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="开机自启" Style="{StaticResource SectionTitleStyle}"/>
+                                <Grid Margin="0,10,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="btnAutoOn" Content="开启" Style="{StaticResource BtnStyle}"/>
+                                        <Button x:Name="btnAutoOff" Content="关闭" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="lblAutoStatus" Text="…" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+
+        <Button x:Name="btnClose" Grid.Row="1" Content="关 闭" Style="{StaticResource BtnStyle}"
+                Background="#24506E" Margin="0,10,0,0"/>
+    </Grid>
 </Window>

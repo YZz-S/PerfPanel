@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using PerfPanel.Services;
 
@@ -14,6 +15,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(MainWindow main)
     {
         InitializeComponent();
+        Loaded += FitToScreen;
         _main = main;
 
         var c = Config.Current;
@@ -438,6 +440,23 @@ public partial class SettingsWindow : Window
 
             todoList.Children.Add(row);
         }
+    }
+
+    /// <summary>按窗口所在屏幕的工作区收口尺寸:小屏(如 1920×440 副屏)下不超出屏幕,超出部分页内滚动。
+    /// 挂在 Loaded 而非 SourceInitialized:此时 CenterScreen 定位已完成,MonitorFromWindow 才能判对显示器。</summary>
+    private void FitToScreen(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var area = MonitorHelper.GetWorkAreaDip(hwnd);
+            if (area is { } a)
+            {
+                if (Height > a.Height - 24) Height = Math.Max(420, a.Height - 24);
+                if (Width > a.Width - 24) Width = Math.Max(460, a.Width - 24);
+            }
+        }
+        catch { /* 屏幕信息取不到时保持默认尺寸 */ }
     }
 
     protected override void OnClosed(EventArgs e)

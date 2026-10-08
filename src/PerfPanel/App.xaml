@@ -73,6 +73,110 @@
             </Setter>
         </Style>
 
+        <!-- 深色下拉选择框:WPF 默认模板的弹出列表是系统浅色底,深色界面下文字看不清,
+             这里整体接管 ComboBox + ComboBoxItem 模板,弹层与选项统一深底浅字。 -->
+        <Style TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="Foreground" Value="#E8EFFC"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1E3A5F"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1E3A5F"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#24506E"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ComboBox}">
+            <Setter Property="Background" Value="#1B2743"/>
+            <Setter Property="Foreground" Value="#E8EFFC"/>
+            <Setter Property="BorderBrush" Value="#223052"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="BgBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                    CornerRadius="4" SnapsToDevicePixels="True"/>
+                            <ToggleButton x:Name="toggleButton" Background="Transparent" BorderThickness="0"
+                                          Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Grid Background="Transparent">
+                                            <!-- 下拉箭头 -->
+                                            <Path x:Name="Arrow" Data="M0,0 L4,4 L8,0" Stretch="None"
+                                                  Stroke="#8FA3C8" StrokeThickness="1.5"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  Margin="0,0,10,0"/>
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Arrow" Property="Stroke" Value="#22D3EE"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <!-- 选中项文字(不参与命中测试,点击落到 ToggleButton) -->
+                            <TextBlock x:Name="SelectedText" IsHitTestVisible="False"
+                                       Text="{Binding SelectedItem.Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       Margin="10,0,26,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Focusable="False" PopupAnimation="Fade">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                        CornerRadius="4" Margin="0,2,0,0" SnapsToDevicePixels="True"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer SnapsToDevicePixels="True"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Hidden" Padding="2">
+                                        <ItemsPresenter SnapsToDevicePixels="True"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="BgBorder" Property="BorderBrush" Value="#22D3EE"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 细滚动条(额度卡等内嵌滚动区) -->
         <Style x:Key="SlimVScrollBar" TargetType="{x:Type ScrollBar}">
             <Setter Property="Width" Value="6"/>
