@@ -26,8 +26,9 @@ public sealed record PlanStatus
     public string? StaleError { get; init; }
 }
 
-/// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、智谱 GLM(非官方)、火山方舟(非官方)。
-/// 刷新失败保留上次成功值;三供应商相互独立容错。</summary>
+/// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、智谱 GLM(非官方)、火山方舟(非官方)、
+/// Xiaomi MiMo(控制台 Cookie:按量付费余额 + Token Plan 用量)。
+/// 刷新失败保留上次成功值;各供应商相互独立容错。</summary>
 public sealed class CodingPlanService
 {
     public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(15);
@@ -44,6 +45,7 @@ public sealed class CodingPlanService
             var c = Config.Current;
             return !string.IsNullOrWhiteSpace(c.DeepSeekKey)
                 || !string.IsNullOrWhiteSpace(c.ZhipuKey)
+                || !string.IsNullOrWhiteSpace(c.MimoCookie)
                 || (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk));
         }
     }
@@ -55,6 +57,7 @@ public sealed class CodingPlanService
         var queries = new List<Task<PlanStatus>>();
         if (!string.IsNullOrWhiteSpace(c.DeepSeekKey)) queries.Add(QueryDeepSeekAsync(c.DeepSeekKey.Trim()));
         if (!string.IsNullOrWhiteSpace(c.ZhipuKey)) queries.Add(QueryZhipuAsync(c.ZhipuKey.Trim()));
+        if (!string.IsNullOrWhiteSpace(c.MimoCookie)) queries.Add(QueryMimoAsync(c.MimoCookie.Trim()));
         if (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk))
             queries.Add(QueryVolcAsync(c.VolcAk.Trim(), c.VolcSk.Trim()));
 
@@ -208,6 +211,146 @@ public sealed class CodingPlanService
         if (weekly != null) result.Add(weekly);
         return result;
     }
+
+    // ==================== Xiaomi MiMo(控制台 Cookie:余额 + Token Plan) ====================
+    // GET https://platform.xiaomimimo.com/api/v1/{balance, tokenPlan/detail, tokenPlan/usage}
+    // tp-/sk- API Key 均无法查询,必须小米账号会话 Cookie(api-platform_serviceToken + userId),
+    // 从浏览器 DevTools 复制任意 /api/v1 请求的 Cookie 请求头即可。
+    // 响应信封 {code, message?, data?}:code=0 成功;401 未登录(附 loginUrl)。
+    // balance = 按量付费余额;tokenPlan/usage = 套餐月度用量(百分比);tokenPlan/detail = 套餐代号/周期。
+
+    private const string MimoApiBase = "https://platform.xiaomimimo.com/api/v1";
+
+    private sealed record MimoReply(int Code, string Message, JsonElement? Data, bool HttpAuth);
+
+    public async Task<PlanStatus> QueryMimoAsync(string cookie)
+    {
+        try
+        {
+            if (!cookie.Contains("api-platform_serviceToken", StringComparison.OrdinalIgnoreCase)
+                || !cookie.Contains("userId", StringComparison.OrdinalIgnoreCase))
+                return Err("MiMo", "Cookie 缺少 api-platform_serviceToken / userId,请从控制台 /api/v1 请求头完整复制");
+
+            var balanceTask = MimoGetAsync(cookie, "balance");
+            var detailTask = MimoGetAsync(cookie, "tokenPlan/detail");
+            var usageTask = MimoGetAsync(cookie, "tokenPlan/usage");
+            await Task.WhenAll(balanceTask, detailTask, usageTask);
+            var bal = balanceTask.Result;
+
+            if (bal.HttpAuth || bal.Code is 401 or 403)
+                return Err("MiMo", "登录失效(Cookie 过期或无效),请重新登录 platform.xiaomimimo.com 复制 Cookie");
+            if (bal.Code != 0 || bal.Data is not { } balData)
+                return Err("MiMo", $"余额查询失败:{(bal.Message.Length > 0 ? bal.Message : $"code {bal.Code}")}");
+            if (!balData.TryGetProperty("balance", out var balVal))
+                return Err("MiMo", "余额响应中没有 balance 字段");
+            double balance = balVal.ValueKind == JsonValueKind.Number ? balVal.GetDouble()
+                : balVal.ValueKind == JsonValueKind.String && double.TryParse(balVal.GetString(), out var bd) ? bd
+                : double.NaN;
+            if (double.IsNaN(balance))
+                return Err("MiMo", "余额数值无法解析");
+            string currency = Str(balData, "currency");
+            if (currency.Length == 0) currency = "CNY";
+
+            var windows = new List<QuotaWindow>
+            {
+                new("余额", null, balance, null, null),
+            };
+
+            // Token Plan 为可选订阅:detail/usage 任一失败都只影响百分比窗口,不影响余额展示
+            DateTime? periodEnd = null;
+            string? planCode = null;
+            bool expired = false;
+            var det = detailTask.Result;
+            if (!det.HttpAuth && det.Code == 0 && det.Data is { } detData)
+            {
+                planCode = Str(detData, "planCode");
+                expired = detData.TryGetProperty("expired", out var ex) && ex.ValueKind == JsonValueKind.True;
+                periodEnd = ParseMimoPeriodEnd(Str(detData, "currentPeriodEnd"));
+            }
+
+            var usage = usageTask.Result;
+            if (!usage.HttpAuth && usage.Code == 0 && usage.Data is { } usageData)
+                windows.AddRange(ParseMimoUsageWindows(usageData, periodEnd));
+
+            string plan = planCode is { Length: > 0 } pc
+                ? (expired ? $"{pc}(已到期)" : pc)
+                : "按量付费";
+            return Ok("MiMo", windows, plan, currency);
+        }
+        catch (Exception ex)
+        {
+            return Err("MiMo", $"网络错误:{ex.Message}");
+        }
+    }
+
+    /// <summary>GET 控制台 API:带 Cookie 与浏览器同款头;HTTP 3xx/401/403 与信封 code=401 统一视为未登录。</summary>
+    private async Task<MimoReply> MimoGetAsync(string cookie, string path)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{MimoApiBase}/{path}");
+        req.Headers.TryAddWithoutValidation("Cookie", cookie);
+        req.Headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+        req.Headers.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+        req.Headers.TryAddWithoutValidation("Origin", "https://platform.xiaomimimo.com");
+        req.Headers.TryAddWithoutValidation("Referer", "https://platform.xiaomimimo.com/");
+        req.Headers.TryAddWithoutValidation("User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36");
+        using var resp = await _http.SendAsync(req);
+        string body = await resp.Content.ReadAsStringAsync();
+
+        if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+            or System.Net.HttpStatusCode.Moved or System.Net.HttpStatusCode.Redirect
+            or System.Net.HttpStatusCode.RedirectMethod or System.Net.HttpStatusCode.TemporaryRedirect)
+            return new MimoReply(401, "未登录", null, true);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            int code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : -1;
+            string msg = Str(root, "message");
+            if (msg.Length == 0) msg = Str(root, "msg");
+            JsonElement? data = root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object
+                ? d.Clone() : null;
+            return new MimoReply(code, msg, data, false);
+        }
+        catch (JsonException)
+        {
+            return new MimoReply(-1, $"响应非 JSON(HTTP {(int)resp.StatusCode})", null, false);
+        }
+    }
+
+    /// <summary>tokenPlan/usage → 百分比窗口;data.monthUsage.percent 与 items[] 均防御式匹配。
+    /// items 每条一个额度桶(name/percent/used/limit),为空时退回月总百分比。</summary>
+    private static List<QuotaWindow> ParseMimoUsageWindows(JsonElement data, DateTime? periodEnd)
+    {
+        var windows = new List<QuotaWindow>();
+        if (!data.TryGetProperty("monthUsage", out var mu) || mu.ValueKind != JsonValueKind.Object)
+            return windows;
+
+        if (mu.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                double pct = item.TryGetProperty("percent", out var p) ? ParseD2(p) : double.NaN;
+                if (double.IsNaN(pct))
+                {
+                    double used = ParseD(item, "used"), limit = ParseD(item, "limit");
+                    pct = limit > 0 ? used / limit * 100.0 : 0;
+                }
+                string label = Str(item, "name");
+                if (label.Length == 0) label = "月额度";
+                windows.Add(new QuotaWindow(label, Math.Clamp(pct, 0, 100), null, null, periodEnd));
+            }
+        }
+        if (windows.Count == 0 && mu.TryGetProperty("percent", out var mp))
+            windows.Add(new QuotaWindow("月额度", Math.Clamp(ParseD2(mp), 0, 100), null, null, periodEnd));
+        return windows;
+    }
+
+    /// <summary>currentPeriodEnd("yyyy-MM-dd HH:mm:ss",控制台周期截止):按 UTC 解析(对齐 CodexBar 实测)。</summary>
+    private static DateTime? ParseMimoPeriodEnd(string s) =>
+        DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt)
+            ? dt : null;
 
     // ==================== 火山方舟 Agent/Coding Plan(非官方) ====================
     // 控制面 OpenAPI(非推理域名),需火山引擎 AK/SK 签名 V4(推理 API Key 无法使用):

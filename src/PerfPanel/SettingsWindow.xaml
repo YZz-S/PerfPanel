@@ -140,7 +140,22 @@
                 </Grid>
                 <TextBox x:Name="txtVolcSk" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,8,0,0"
                          Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
-                <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱填各自开放平台的 API Key。均留空 = 不查询该项。"
+
+                <TextBlock Text="MiMo 控制台 Cookie(查按量付费余额 + Token Plan 套餐用量)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="txtMimoCookie" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
+                             ToolTip="整段 Cookie 请求头,粘贴后自动保存"/>
+                    <Button x:Name="btnMimoTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                </Grid>
+                <TextBlock Text="获取:登录 platform.xiaomimimo.com → F12 开发者工具 → Network → 刷新 → 点任意 /api/v1 请求 → Request Headers → 复制整行 Cookie(必须含 api-platform_serviceToken 与 userId)。tp-/sk- API Key 查不了,只能用登录 Cookie;过期后重新复制。留空 = 不查询。"
+                           FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+                <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱填各自开放平台的 API Key;MiMo 粘贴控制台 Cookie。均留空 = 不查询该项。"
                            FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
@@ -150,6 +165,32 @@
             <StackPanel>
                 <TextBlock Text="便签 / 专注提醒" Style="{StaticResource SectionTitleStyle}"/>
                 <CheckBox x:Name="chkShowNotes" Content="显示便签待办卡片(竖屏)/ 便签条(横屏)" Style="{StaticResource CheckStyle}"/>
+                <CheckBox x:Name="chkShowPomodoro" Content="显示番茄钟计时(便签卡内,专注/休息轮换)" Style="{StaticResource CheckStyle}"/>
+
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="专注" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbPomoWork" Grid.Column="1" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0"
+                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
+                        <ComboBoxItem Content="15 分钟" Tag="15"/>
+                        <ComboBoxItem Content="25 分钟" Tag="25"/>
+                        <ComboBoxItem Content="45 分钟" Tag="45"/>
+                        <ComboBoxItem Content="50 分钟" Tag="50"/>
+                    </ComboBox>
+                    <TextBlock Text="休息" Grid.Column="2" Style="{StaticResource LabelStyle}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                    <ComboBox x:Name="cmbPomoBreak" Grid.Column="3" HorizontalAlignment="Left" Width="98" Margin="8,0,0,0"
+                              Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052">
+                        <ComboBoxItem Content="3 分钟" Tag="3"/>
+                        <ComboBoxItem Content="5 分钟" Tag="5"/>
+                        <ComboBoxItem Content="10 分钟" Tag="10"/>
+                        <ComboBoxItem Content="15 分钟" Tag="15"/>
+                    </ComboBox>
+                </Grid>
 
                 <TextBlock Text="便签(一句话,如:专注复习《高数》第三章)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
                 <TextBox x:Name="txtNote" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"

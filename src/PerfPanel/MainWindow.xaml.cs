@@ -69,6 +69,27 @@ public partial class MainWindow : Window
 
         Loaded += OnLoaded;
         KeyDown += OnKeyDown;
+
+        // 番茄钟按钮(整窗 Topmost 不抢焦点,与待办行同样走 MouseLeftButtonDown)
+        btnPomoToggle.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            var now = DateTime.UtcNow;
+            if (_notes.PomoRunning) _notes.PomoPause(now); else _notes.PomoStart(now);
+            UpdatePomodoro(now);
+        };
+        btnPomoReset.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            _notes.PomoReset();
+            UpdatePomodoro(DateTime.UtcNow);
+        };
+        btnPomoSkip.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            _notes.PomoSkip();
+            UpdatePomodoro(DateTime.UtcNow);
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -291,6 +312,9 @@ public partial class MainWindow : Window
         txtGpuName.MaxWidth = 240;
         txtNoteText.FontSize = 15;
         txtNotesReminder.FontSize = 12;
+        ringPomo.Width = ringPomo.Height = 92;
+        txtPomoPhase.FontSize = 15;
+        txtPomoHint.FontSize = 12;
         _todoFontSize = 13;
     }
 
@@ -326,6 +350,9 @@ public partial class MainWindow : Window
         txtGpuName.MaxWidth = 330;
         txtNoteText.FontSize = 18;
         txtNotesReminder.FontSize = 13;
+        ringPomo.Width = ringPomo.Height = 106;
+        txtPomoPhase.FontSize = 16;
+        txtPomoHint.FontSize = 13;
         _todoFontSize = 15;
 
         MoveTo(landCpuCell, cardCpu);
@@ -875,6 +902,16 @@ public partial class MainWindow : Window
         cell.Children.Add(ring);
         cell.Children.Add(nameLine);
 
+        // 绝对值窗口(如 MiMo 按量付费余额)与百分比环并存时,余额单独一行展示
+        foreach (var abs in p.Windows.Where(w => w.UsedPercent is null && w.RemainingValue is not null))
+            cell.Children.Add(new TextBlock
+            {
+                Text = "余额 " + FormatPlanValue(abs, p.Unit),
+                FontSize = 12.5, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
+                Foreground = BrushFromHex("#22D3EE"), HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+
         foreach (var w in windows)
             cell.Children.Add(BuildCompactLegendLine(w));
         return cell;
@@ -1020,6 +1057,7 @@ public partial class MainWindow : Window
         cardNotes.Visibility = Visibility.Visible;
 
         var utcNow = DateTime.UtcNow;
+        UpdatePomodoro(utcNow);
         if (_notes.IsReminderDue(utcNow))
         {
             _activeReminderText = _notes.TakeReminder(utcNow);
@@ -1053,6 +1091,49 @@ public partial class MainWindow : Window
             txtNotesReminder.FontWeight = FontWeights.Normal;
         }
         rowNotesReminder.Visibility = Visibility.Visible;
+    }
+
+    // ---------- 番茄钟 ----------
+
+    private DateTime _pomoFlashUntilUtc = DateTime.MinValue;
+    private string _pomoFlashText = "";
+
+    /// <summary>每秒推进番茄钟并刷新块:到点自动换段 + 系统提示音 + 8 秒完成横幅。
+    /// 显示开关由 config.ShowPomodoro 控制,隐藏时不动计时。</summary>
+    private void UpdatePomodoro(DateTime utcNow)
+    {
+        bool show = Config.Current.ShowPomodoro;
+        gridPomodoro.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+
+        string? evt = _notes.PomoAdvance(utcNow);
+        if (evt != null)
+        {
+            try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+            _pomoFlashText = evt == "work-done"
+                ? $"✅ 专注完成!自动休息 {_notes.PomodoroBreakMinutes} 分钟"
+                : "🍅 休息结束,点「▶ 开始」进入下一轮专注";
+            _pomoFlashUntilUtc = utcNow.AddSeconds(8);
+        }
+
+        var remaining = _notes.PomoRemainingNow(utcNow);
+        double total = _notes.PomoPhaseTotalSeconds;
+        bool onBreak = _notes.PomoOnBreak;
+
+        ringPomo.Value = total > 0 ? Math.Clamp((1 - remaining.TotalSeconds / total) * 100, 0, 100) : 0;
+        ringPomo.Text = remaining.TotalSeconds >= 3600
+            ? remaining.ToString(@"h\:mm\:ss")
+            : remaining.ToString(@"mm\:ss");
+        ringPomo.RingBrush = onBreak ? CachedBrush(0x34, 0xD3, 0x99) : CachedBrush(0xFB, 0xBF, 0x24);
+
+        txtPomoPhase.Text = onBreak ? "☕ 休息" : "🍅 专注";
+        txtPomoPhase.Foreground = onBreak ? CachedBrush(0x34, 0xD3, 0x99) : CachedBrush(0xFB, 0xBF, 0x24);
+        txtPomoInfo.Text = $"本次已完成 {_notes.PomoCompleted} 个 · 专注{_notes.PomodoroWorkMinutes}′ / 休息{_notes.PomodoroBreakMinutes}′";
+        txtPomoHint.Text = utcNow < _pomoFlashUntilUtc ? _pomoFlashText
+            : _notes.PomoRunning ? (onBreak ? "休息中,放松一下" : "专注中,回到当前任务上")
+            : onBreak ? "休息已暂停" : "点击「▶ 开始」进入专注";
+        txtPomoToggle.Text = _notes.PomoRunning ? "⏸ 暂停"
+            : remaining.TotalSeconds < total - 1 ? "▶ 继续" : "▶ 开始";
     }
 
     /// <summary>重建待办行:未完成在前,点击整行切换完成态。</summary>

@@ -13,11 +13,11 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 - **Clock**: live time, date & weekday, uptime
 - **CPU**: large usage readout + 120s history graph, frequency (LHM core clocks, falling back to WMI effective frequency that can exceed the nominal rate under boost), temperature, power draw, fan speed (desktop boards whose SuperIO chip exposes a fan sensor; some mini-PC / laptop EC fans are not readable)
 - **GPU**: usage + history graph, VRAM usage (progress bar), temperature, power draw, fan (rows hide automatically when the iGPU exposes no sensor; AMD iGPU temperature comes from its VR SoC sensor)
-- **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode enlarges it into a big FOCUS card (todos clickable)
+- **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode enlarges it into a big FOCUS card (todos clickable); built-in **pomodoro timer** (progress ring, work/break rotation, start/pause/reset/skip, system chime + 8-second banner on completion, durations configurable in Settings)
 - **RAM**: usage percentage + used/total
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
-- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan remaining quota with reset countdowns
+- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage) remaining quota with reset countdowns
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
 - **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (each provider renders one aligned nested ring gauge — 5h/week/month from outer to inner — with the tightest remaining quota in the center; balance-type providers like DeepSeek show a full ring with the amount); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
 
@@ -94,16 +94,18 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 | DeepSeek | official `/user/balance` API | account balance (¥) |
 | Zhipu GLM Coding Plan | unofficial API (same as CC Switch) | 5h/weekly window percentages + reset countdown |
 | Volcano Ark Agent/Coding Plan | unofficial console OpenAPI (same as CC Switch) | 5h/weekly/monthly quota + reset countdown |
+| Xiaomi MiMo | console API via browser login Cookie (same as CodexBar) | pay-as-you-go balance (¥) + Token Plan monthly usage % + period-end countdown |
 
 **Where to put keys**: Settings (`S` or ⚙) → "Coding Plan Quota":
 
 - **DeepSeek**: the API key from [platform.deepseek.com](https://platform.deepseek.com)
 - **Zhipu GLM**: the API key from [open.bigmodel.cn](https://open.bigmodel.cn) (personal tier; GLM API keys not dedicated to Coding Plan also work)
 - **Volcano Ark**: the **IAM AccessKey ID + Secret Access Key** from the Volcengine console ([volcengine.com](https://www.volcengine.com) → avatar at the top right → API access keys) — **not** the Ark inference API key. Quota queries go through the console-plane OpenAPI with AK/SK signing, so inference keys won't work
+- **Xiaomi MiMo**: paste the **whole console Cookie header** (neither `tp-` nor `sk-` API keys can query usage — only a logged-in account session works). Log in at [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → refresh → click any `/api/v1` request → Request Headers → copy the full `Cookie` line (must contain `api-platform_serviceToken` and `userId`); re-copy when the session expires
 
 Each item has "Save & Test" for instant validation; leave it empty and the panel simply skips that provider. Keys are stored in `config.json` next to the exe.
 
-> The GLM/Volcano integrations use unofficial APIs (mirroring the CC Switch implementation), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields.
+> The GLM/Volcano/MiMo integrations use unofficial APIs (mirroring CC Switch / CodexBar), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields.
 
 ## Notes / todos / focus reminders
 
@@ -112,8 +114,9 @@ The FOCUS card (a large card spanning the lower-left half in landscape) turns th
 - **Sticky note**: your one-line current goal (e.g. "focus on Calculus chapter 3"), always visible in amber
 - **Todos**: click a row right on the panel to toggle done (finished items get struck through and dimmed); pending items sort first
 - **Focus reminders**: every 15/30/45/60/90 minutes one rotating message highlights for 90 seconds — defaults include "stay on your review, don't get distracted" and "check the revision kanban"; otherwise the card shows a countdown and the next message preview
+- **Pomodoro timer**: an in-card progress ring counting down (mm:ss in the center, amber for work / green for break) with "▶ Start / ⏸ Pause / ↺ Reset / ⏭ Skip" — a finished work phase auto-starts the break, a finished break stops at ready-to-start; completion plays a system chime and shows an 8-second banner. Durations are chosen in Settings (15/25/45/50 min × 3/5/10/15 min) with a show/hide toggle; runtime state is memory-only (reset on restart), durations persist in `notes.json`
 
-Edit everything in Settings (S or ⚙) → "Notes / focus": sticky note, add/remove todos, cycle length, custom messages (one per line). Content persists in `notes.json` next to the exe; untick "show notes card" to hide the whole thing.
+Edit everything in Settings (S or ⚙) → "Notes / focus": sticky note, add/remove todos, cycle length, custom messages (one per line), pomodoro durations & visibility. Content persists in `notes.json` next to the exe; untick "show notes card" to hide the whole thing.
 
 ## Build
 

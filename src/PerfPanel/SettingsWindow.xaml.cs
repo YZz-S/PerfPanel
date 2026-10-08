@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
         txtZpKey.Text = c.ZhipuKey;
         txtVolcAk.Text = c.VolcAk;
         txtVolcSk.Text = c.VolcSk;
+        txtMimoCookie.Text = c.MimoCookie;
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
@@ -36,13 +37,39 @@ public partial class SettingsWindow : Window
         // ---- 便签 / 专注提醒 ----
         var notes = _main.Notes;
         chkShowNotes.IsChecked = c.ShowNotes;
+        chkShowPomodoro.IsChecked = c.ShowPomodoro;
         txtNote.Text = notes.Note;
         txtMessages.Text = string.Join(Environment.NewLine, notes.Messages);
         SelectReminder(notes.ReminderMinutes);
+        SelectPomoWork(notes.PomodoroWorkMinutes);
+        SelectPomoBreak(notes.PomodoroBreakMinutes);
         ReloadTodoList();
 
         chkShowNotes.Checked += (_, _) => Apply(c => c.ShowNotes = true);
         chkShowNotes.Unchecked += (_, _) => Apply(c => c.ShowNotes = false);
+        chkShowPomodoro.Checked += (_, _) => { Apply(c => c.ShowPomodoro = true); _main.RefreshNotesCard(); };
+        chkShowPomodoro.Unchecked += (_, _) => { Apply(c => c.ShowPomodoro = false); _main.RefreshNotesCard(); };
+
+        cmbPomoWork.SelectionChanged += (_, _) =>
+        {
+            if (cmbPomoWork.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var min))
+            {
+                _main.Notes.PomodoroWorkMinutes = min;
+                _main.Notes.Save();
+                _main.Notes.PomoSyncDurations();
+                _main.RefreshNotesCard();
+            }
+        };
+        cmbPomoBreak.SelectionChanged += (_, _) =>
+        {
+            if (cmbPomoBreak.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var min))
+            {
+                _main.Notes.PomodoroBreakMinutes = min;
+                _main.Notes.Save();
+                _main.Notes.PomoSyncDurations();
+                _main.RefreshNotesCard();
+            }
+        };
 
         txtNote.TextChanged += (_, _) =>
         {
@@ -162,6 +189,7 @@ public partial class SettingsWindow : Window
         btnDsTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.DeepSeek);
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
+        btnMimoTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Mimo);
 
         sldScale.ValueChanged += (_, _) =>
         {
@@ -205,7 +233,7 @@ public partial class SettingsWindow : Window
         _main.ApplyConfig();
     }
 
-    private enum PlanKind { DeepSeek, Zhipu, Volc }
+    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo }
 
     /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
     private async Task SaveAndTestPlanAsync(PlanKind kind)
@@ -217,11 +245,17 @@ public partial class SettingsWindow : Window
         {
             case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
             case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
+            case PlanKind.Mimo: key = txtMimoCookie.Text.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
             default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
 
-        bool empty = kind == PlanKind.Volc ? ak.Length == 0 || sk.Length == 0 : key.Length == 0;
+        bool empty = kind switch
+        {
+            PlanKind.Volc => ak.Length == 0 || sk.Length == 0,
+            PlanKind.Mimo => key.Length == 0,
+            _ => key.Length == 0,
+        };
         if (empty)
         {
             await _main.RefreshCodingPlanAsync();
@@ -237,6 +271,7 @@ public partial class SettingsWindow : Window
             {
                 PlanKind.DeepSeek => await _main.CodingPlan.QueryDeepSeekAsync(key),
                 PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
+                PlanKind.Mimo => await _main.CodingPlan.QueryMimoAsync(key),
                 _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
             };
             string msg = r.Ok
@@ -313,6 +348,32 @@ public partial class SettingsWindow : Window
             }
         }
         cmbReminder.SelectedIndex = 1; // 默认 30
+    }
+
+    private void SelectPomoWork(int minutes)
+    {
+        foreach (ComboBoxItem item in cmbPomoWork.Items)
+        {
+            if (item.Tag is string tag && int.Parse(tag) == minutes)
+            {
+                cmbPomoWork.SelectedItem = item;
+                return;
+            }
+        }
+        cmbPomoWork.SelectedIndex = 1; // 默认 25
+    }
+
+    private void SelectPomoBreak(int minutes)
+    {
+        foreach (ComboBoxItem item in cmbPomoBreak.Items)
+        {
+            if (item.Tag is string tag && int.Parse(tag) == minutes)
+            {
+                cmbPomoBreak.SelectedItem = item;
+                return;
+            }
+        }
+        cmbPomoBreak.SelectedIndex = 1; // 默认 5
     }
 
     /// <summary>重建待办列表:勾选框切换完成、右侧删除。</summary>

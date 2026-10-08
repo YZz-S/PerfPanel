@@ -20,9 +20,11 @@ public sealed class AppConfig
     public string ZhipuKey { get; set; } = "";        // 智谱 open.bigmodel.cn API Key(个人版,Authorization 头直接传)
     public string VolcAk { get; set; } = "";          // 火山引擎 AccessKey ID(控制台 IAM,非推理 API Key)
     public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
+    public string MimoCookie { get; set; } = "";      // MiMo 控制台 Cookie 头(须含 api-platform_serviceToken + userId;查余额与 Token Plan 用量)
 
     // ---- 便签 / 待办 ----
     public bool ShowNotes { get; set; } = true;       // 便签待办卡片(内容存 notes.json)
+    public bool ShowPomodoro { get; set; } = true;    // 便签卡内的番茄钟计时器
 }
 
 /// <summary>config.json 配置中心:设置窗口读写,面板即时生效。</summary>
