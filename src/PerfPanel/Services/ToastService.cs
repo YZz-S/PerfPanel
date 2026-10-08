@@ -1,3 +1,4 @@
+using System.IO;
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
 
@@ -33,11 +34,25 @@ public static class ToastService
                 Tag = tag,
                 Group = "PerfPanel",
             });
+            Log($"OK  {DateTime.Now:HH:mm:ss} tag={tag} {title}");
         }
-        catch
+        catch (Exception ex)
         {
+            Log($"ERR {DateTime.Now:HH:mm:ss} tag={tag} {ex.GetType().Name}: {ex.Message}");
             try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
         }
+    }
+
+    /// <summary>诊断日志(exe 旁 toast-last.log):记录每次投递成败,排查"通知没弹"用。</summary>
+    private static void Log(string line)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(AppContext.BaseDirectory, "toast-last.log"),
+                line + Environment.NewLine);
+        }
+        catch { }
     }
 
     /// <summary>HKCU 注册 AUMID(幂等):DisplayName 与图标(取当前 exe 图标)。
