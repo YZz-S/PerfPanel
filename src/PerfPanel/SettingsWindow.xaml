@@ -264,6 +264,10 @@
                         TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
                 <CheckBox x:Name="chkShowHint" Content="显示操作提示(拖动/方向键/S 设置/Esc 退出)" Style="{StaticResource CheckStyle}"/>
                 <CheckBox x:Name="chkShowFooter" Content="显示底部状态行(SYSTEM MONITOR · FULL SENSORS)" Style="{StaticResource CheckStyle}"/>
+
+                <TextBlock Text="左上角标题文字(可改任意内容/emoji,留空 = 隐藏)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                <TextBox x:Name="txtBrand" Height="32" VerticalContentAlignment="Center" Padding="8,0" Margin="0,6,0,0"
+                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
             </StackPanel>
         </Border>
 

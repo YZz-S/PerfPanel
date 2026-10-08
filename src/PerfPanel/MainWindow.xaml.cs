@@ -133,13 +133,15 @@ public partial class MainWindow : Window
         // 以设计尺寸渲染整窗保存,随后删除请求文件。用于更新 README 效果图,不受屏幕捕获/DPI 影响。
         _ = Task.Run(async () =>
         {
+            ShotLog("queued"); // 任务已入队
             await Task.Delay(18000);
             try
             {
                 string marker = Path.Combine(AppContext.BaseDirectory, "shot-request.txt");
-                if (!File.Exists(marker)) return;
+                if (!File.Exists(marker)) { ShotLog("no marker"); return; }
                 string outPath = File.ReadAllLines(marker).FirstOrDefault()?.Trim() ?? "";
-                if (outPath.Length == 0) return;
+                if (outPath.Length == 0) { ShotLog("empty outPath"); return; }
+                ShotLog($"render {outPath}");
                 await Dispatcher.InvokeAsync(() =>
                 {
                     var rtb = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
@@ -150,9 +152,17 @@ public partial class MainWindow : Window
                     enc.Save(fs);
                 });
                 File.Delete(marker);
+                ShotLog("done");
             }
-            catch { }
+            catch (Exception ex) { ShotLog($"ERR {ex.GetType().Name}: {ex.Message}"); }
         });
+    }
+
+    /// <summary>自截图诊断日志(exe 旁 shot-last.log)。</summary>
+    private static void ShotLog(string line)
+    {
+        try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "shot-last.log"), $"{DateTime.Now:HH:mm:ss} {line}\n"); }
+        catch { }
     }
 
     /// <summary>重申 TOPMOST(不动位置尺寸、不抢焦点),压住任务栏保证面板完整可见。</summary>
@@ -202,6 +212,13 @@ public partial class MainWindow : Window
         var c = Config.Current;
         txtHint.Visibility = c.ShowHint ? Visibility.Visible : Visibility.Collapsed;
         txtFooter.Visibility = c.ShowFooter ? Visibility.Visible : Visibility.Collapsed;
+        // 左上角标题:可自定义文字,留空隐藏(横竖屏两个标题同步)
+        string brand = c.BrandText;
+        foreach (var t in new[] { txtBrandPort, txtBrandLand })
+        {
+            t.Text = brand;
+            t.Visibility = brand.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;

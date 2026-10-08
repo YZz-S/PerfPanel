@@ -23,6 +23,7 @@ public partial class SettingsWindow : Window
         chkShowWeather.IsChecked = c.ShowWeather;
         chkShowHint.IsChecked = c.ShowHint;
         chkShowFooter.IsChecked = c.ShowFooter;
+        txtBrand.Text = c.BrandText;
         chkShowPlan.IsChecked = c.ShowCodingPlan;
         txtDsKey.Text = c.DeepSeekKey;
         txtZpKey.Text = c.ZhipuKey;
@@ -204,6 +205,14 @@ public partial class SettingsWindow : Window
 
         chkShowFooter.Checked += (_, _) => Apply(c => c.ShowFooter = true);
         chkShowFooter.Unchecked += (_, _) => Apply(c => c.ShowFooter = false);
+
+        // 左上角标题:输入即生效(边打边预览),存 config.json
+        txtBrand.TextChanged += (_, _) =>
+        {
+            Config.Current.BrandText = txtBrand.Text;
+            Config.Save();
+            _main.ApplyConfig();
+        };
 
         btnAutoOn.Click += (_, _) =>
         {

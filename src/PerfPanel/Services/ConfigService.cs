@@ -12,6 +12,7 @@ public sealed class AppConfig
     public bool ShowWeather { get; set; } = true;
     public bool ShowHint { get; set; } = true;
     public bool ShowFooter { get; set; } = true;      // 底部 SYSTEM MONITOR 状态行
+    public string BrandText { get; set; } = "PERF PANEL"; // 左上角标题文字;空 = 隐藏
     public string AmapKey { get; set; } = "";         // 高德 Web服务 Key;空 = Open-Meteo 免费源
 
     // ---- Coding Plan 额度 ----

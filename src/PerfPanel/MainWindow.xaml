@@ -24,7 +24,7 @@
                 <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,18,20,0" Background="Transparent"
                             MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
                     <Grid>
-                        <TextBlock Text="PERF PANEL" FontSize="15" FontWeight="Bold">
+                        <TextBlock x:Name="txtBrandPort" Text="PERF PANEL" FontSize="15" FontWeight="Bold">
                             <TextBlock.Foreground>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                     <GradientStop Color="#22D3EE" Offset="0"/>
@@ -402,7 +402,7 @@
                 <Grid Grid.Row="0" Margin="20,8,20,2" Background="Transparent"
                       MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
                     <Grid>
-                        <TextBlock Text="PERF PANEL" FontSize="15" FontWeight="Bold" VerticalAlignment="Center">
+                        <TextBlock x:Name="txtBrandLand" Text="PERF PANEL" FontSize="15" FontWeight="Bold" VerticalAlignment="Center">
                             <TextBlock.Foreground>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                     <GradientStop Color="#22D3EE" Offset="0"/>
