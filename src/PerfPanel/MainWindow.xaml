@@ -233,6 +233,14 @@
                                                HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
                                 </Grid>
 
+                                <!-- 主体:左列 便签+待办 | 右列 番茄钟(横屏左右分栏,竖屏由代码堆叠回单列) -->
+                                <Grid x:Name="notesBody">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel x:Name="notesMainCol" Grid.Column="0">
+
                                 <TextBlock x:Name="txtNoteText" Text="" FontSize="15" FontWeight="Bold"
                                            Foreground="#FBBF24" TextWrapping="Wrap" Margin="2,10,0,0"/>
 
@@ -274,6 +282,12 @@
                                 </Border>
 
                                 <StackPanel x:Name="notesTodoPanel" Margin="0,10,0,0"/>
+
+                                    </StackPanel>
+                                    <!-- 横屏:番茄钟移到此右列单元格,与左列便签/待办并排 -->
+                                    <ContentControl x:Name="notesPomoCell" Grid.Column="1"
+                                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                                </Grid>
 
                                 <TextBlock x:Name="txtNotesHint" Text="" FontSize="11" Foreground="#55648A"
                                            TextWrapping="Wrap" Margin="2,8,0,0"/>

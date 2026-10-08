@@ -312,6 +312,8 @@ public partial class MainWindow : Window
         txtGpuName.MaxWidth = 240;
         txtNoteText.FontSize = 15;
         txtNotesReminder.FontSize = 12;
+        MoveTo(notesMainCol, gridPomodoro, 1);      // 竖屏窄:番茄钟堆叠回 便签 与 待办 之间
+        gridPomodoro.Margin = new Thickness(0, 12, 0, 0);
         ringPomo.Width = ringPomo.Height = 92;
         txtPomoPhase.FontSize = 15;
         txtPomoHint.FontSize = 12;
@@ -365,6 +367,8 @@ public partial class MainWindow : Window
         cardNetwork.Margin = new Thickness(0, 0, 12, 0);
         MoveTo(landNotesCell, cardNotes);
         cardNotes.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(notesPomoCell, gridPomodoro);        // 横屏宽:番茄钟移到右列,与左列便签/待办并排
+        gridPomodoro.Margin = new Thickness(14, 0, 0, 0);
 
         // 天气/额度占右列上下两格,空缺时另一半纵跨两行
         UpdateLandscapeSpans();
