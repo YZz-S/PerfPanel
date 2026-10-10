@@ -22,6 +22,7 @@ public sealed class AppConfig
     public string VolcAk { get; set; } = "";          // 火山引擎 AccessKey ID(控制台 IAM,非推理 API Key)
     public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
     public string MimoCookie { get; set; } = "";      // MiMo 控制台 Cookie 头(须含 api-platform_serviceToken + userId;查余额与 Token Plan 用量)
+    public string OpenCodeKey { get; set; } = "";     // OpenCode Go API Key(sk-,opencode.ai 控制台;查 Go 订阅 5h/周/月用量)
 
     // ---- 便签 / 待办 ----
     public bool ShowNotes { get; set; } = true;       // 便签待办卡片(内容存 notes.json)

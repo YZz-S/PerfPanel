@@ -17,7 +17,7 @@
 - **内存**:占用百分比 + 已用/总量
 - **网络**:实时上/下行速度 + 下行历史曲线,自动选择活动网卡
 - **天气**:Open-Meteo 免费国际源(无需 key;可填高德 Key 切换国内稳定源),自动 IP 定位(可手动改 `weather.json`)
-- **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)剩余额度与重置倒计时
+- **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)、OpenCode Go(5h/周/月用量)剩余额度与重置倒计时
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
 - **自定义标题**:左上角 PERF PANEL 文字可在设置(S)→「界面」改成任意内容/emoji,输入即生效,留空 = 隐藏
 - **横竖屏布局**:横版 1920×440 时钟居中,上排为 CPU/GPU/内存 圆环紧凑磁贴(用量一环了然)+天气,下排为横跨左半的大号便签待办卡片、网络与额度卡(每个供应商一枚嵌套圆环横排对齐:5h/周/月由外到内,环心显示最紧张窗口的剩余%,余额类如 DeepSeek 显示常满环+金额);`auto` 按副屏形状自动选,也可在设置、config.json 或命令行固定方向
@@ -96,6 +96,7 @@ PerfPanel.exe --set-city 上海
 | 智谱 GLM Coding Plan | 非官方接口(同 CC Switch) | 5h 窗/周窗剩余百分比 + 重置倒计时 |
 | 火山方舟 Agent/Coding Plan | 非官方控制面 OpenAPI(同 CC Switch) | 5h/周/月窗剩余额度 + 重置倒计时 |
 | Xiaomi MiMo | 控制台 API(浏览器登录 Cookie,同 CodexBar) | 按量付费余额(¥)+ Token Plan 月额度已用百分比 + 周期截止倒计时 |
+| OpenCode Go | API Key Bearer `GET zen/go/v1/usage`(同 CodexBar 实测端点) | 5h(滚动)/周/月用量百分比 + 重置倒计时;响应带美元限额时附剩余金额 |
 
 **密钥填充位置**:设置(S 或 ⚙)→「Coding Plan 额度」:
 
@@ -103,6 +104,7 @@ PerfPanel.exe --set-city 上海
 - **智谱 GLM**:填 [open.bigmodel.cn](https://open.bigmodel.cn) 的 API Key(个人版;非 Coding Plan 专用的 GLM API Key 亦可查询)
 - **火山方舟**:填**火山引擎控制台 IAM 的 AccessKey ID + Secret Access Key**(即 [volcengine.com](https://www.volcengine.com) 控制台右上角头像 → API 访问密钥),**不是**推理用的 Ark API Key —— 火山用量查询走控制面 OpenAPI,需 AK/SK 签名,推理 Key 无法使用
 - **Xiaomi MiMo**:**粘贴整段控制台 Cookie**(`tp-`/`sk-` API Key 均查不了,只能用账号登录会话)—— 登录 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → 刷新 → 点任意 `/api/v1` 请求 → Request Headers → 复制整行 Cookie(必须含 `api-platform_serviceToken` 与 `userId`);Cookie 过期后重新复制即可
+- **OpenCode Go**:填 [opencode.ai/console](https://opencode.ai/console) 的 API Key(`sk-` 开头;需已订阅 Go/Go Plus)
 
 各项均「保存并测试」即时验证;留空 = 面板不查询该项。密钥保存在 exe 旁 `config.json`。
 

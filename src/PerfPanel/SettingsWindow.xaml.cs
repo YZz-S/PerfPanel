@@ -32,6 +32,7 @@ public partial class SettingsWindow : Window
         txtVolcAk.Text = c.VolcAk;
         txtVolcSk.Text = c.VolcSk;
         txtMimoCookie.Text = c.MimoCookie;
+        txtOcKey.Text = c.OpenCodeKey;
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
@@ -193,6 +194,7 @@ public partial class SettingsWindow : Window
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
         btnMimoTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Mimo);
+        btnOcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.OpenCode);
 
         sldScale.ValueChanged += (_, _) =>
         {
@@ -244,7 +246,7 @@ public partial class SettingsWindow : Window
         _main.ApplyConfig();
     }
 
-    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo }
+    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo, OpenCode }
 
     /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
     private async Task SaveAndTestPlanAsync(PlanKind kind)
@@ -257,6 +259,7 @@ public partial class SettingsWindow : Window
             case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
             case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
             case PlanKind.Mimo: key = txtMimoCookie.Text.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
+            case PlanKind.OpenCode: key = txtOcKey.Text.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
             default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
@@ -283,6 +286,7 @@ public partial class SettingsWindow : Window
                 PlanKind.DeepSeek => await _main.CodingPlan.QueryDeepSeekAsync(key),
                 PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
                 PlanKind.Mimo => await _main.CodingPlan.QueryMimoAsync(key),
+                PlanKind.OpenCode => await _main.CodingPlan.QueryOpenCodeAsync(key),
                 _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
             };
             string msg = r.Ok

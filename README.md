@@ -17,7 +17,7 @@ A dark, tech-style hardware monitoring panel built natively in WPF, designed for
 - **RAM**: usage percentage + used/total
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
-- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage) remaining quota with reset countdowns
+- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage), OpenCode Go (5h/week/month usage) — remaining quota with reset countdowns
 - **Custom title**: the top-left `PERF PANEL` label is editable in Settings → Display (any text/emoji, applies as you type; leave it empty to hide it)
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
 - **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (each provider renders one aligned nested ring gauge — 5h/week/month from outer to inner — with the tightest remaining quota in the center; balance-type providers like DeepSeek show a full ring with the amount); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
@@ -96,6 +96,7 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 | Zhipu GLM Coding Plan | unofficial API (same as CC Switch) | 5h/weekly window percentages + reset countdown |
 | Volcano Ark Agent/Coding Plan | unofficial console OpenAPI (same as CC Switch) | 5h/weekly/monthly quota + reset countdown |
 | Xiaomi MiMo | console API via browser login Cookie (same as CodexBar) | pay-as-you-go balance (¥) + Token Plan monthly usage % + period-end countdown |
+| OpenCode Go | API Key Bearer `GET zen/go/v1/usage` (endpoint as probed by CodexBar) | rolling-5h/weekly/monthly usage % + reset countdown; remaining dollars when the response carries them |
 
 **Where to put keys**: Settings (`S` or ⚙) → "Coding Plan Quota":
 
@@ -103,6 +104,7 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 - **Zhipu GLM**: the API key from [open.bigmodel.cn](https://open.bigmodel.cn) (personal tier; GLM API keys not dedicated to Coding Plan also work)
 - **Volcano Ark**: the **IAM AccessKey ID + Secret Access Key** from the Volcengine console ([volcengine.com](https://www.volcengine.com) → avatar at the top right → API access keys) — **not** the Ark inference API key. Quota queries go through the console-plane OpenAPI with AK/SK signing, so inference keys won't work
 - **Xiaomi MiMo**: paste the **whole console Cookie header** (neither `tp-` nor `sk-` API keys can query usage — only a logged-in account session works). Log in at [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → refresh → click any `/api/v1` request → Request Headers → copy the full `Cookie` line (must contain `api-platform_serviceToken` and `userId`); re-copy when the session expires
+- **OpenCode Go**: the API key from [opencode.ai/console](https://opencode.ai/console) (`sk-…`; requires an active Go / Go Plus subscription)
 
 Each item has "Save & Test" for instant validation; leave it empty and the panel simply skips that provider. Keys are stored in `config.json` next to the exe.
 

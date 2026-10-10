@@ -789,10 +789,10 @@ public partial class MainWindow : Window
             .Select(p => compact ? BuildCompactPlanSection(p) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
-        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐
+        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 5 家后图例文本靠截断收窄
         if (compact && sections.Count > 1)
         {
-            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 4) };
+            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 5) };
             foreach (var s in sections)
                 grid.Children.Add(s);
             planRows.Children.Add(grid);
