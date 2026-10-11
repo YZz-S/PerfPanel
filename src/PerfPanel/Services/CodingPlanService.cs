@@ -27,7 +27,7 @@ public sealed record PlanStatus
 }
 
 /// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、智谱 GLM(非官方)、火山方舟(非官方)、
-/// Xiaomi MiMo(控制台 Cookie:按量付费余额 + Token Plan 用量)。
+/// Xiaomi MiMo(控制台 Cookie:按量付费余额 + Token Plan 用量)、OpenCode Go(sk- API Key)。
 /// 刷新失败保留上次成功值;各供应商相互独立容错。</summary>
 public sealed class CodingPlanService
 {
@@ -46,6 +46,7 @@ public sealed class CodingPlanService
             return !string.IsNullOrWhiteSpace(c.DeepSeekKey)
                 || !string.IsNullOrWhiteSpace(c.ZhipuKey)
                 || !string.IsNullOrWhiteSpace(c.MimoCookie)
+                || !string.IsNullOrWhiteSpace(c.OpenCodeKey)
                 || (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk));
         }
     }
@@ -60,6 +61,7 @@ public sealed class CodingPlanService
         if (!string.IsNullOrWhiteSpace(c.MimoCookie)) queries.Add(QueryMimoAsync(c.MimoCookie.Trim()));
         if (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk))
             queries.Add(QueryVolcAsync(c.VolcAk.Trim(), c.VolcSk.Trim()));
+        if (!string.IsNullOrWhiteSpace(c.OpenCodeKey)) queries.Add(QueryOpenCodeAsync(c.OpenCodeKey.Trim()));
 
         if (queries.Count > 0)
         {
@@ -351,6 +353,124 @@ public sealed class CodingPlanService
     private static DateTime? ParseMimoPeriodEnd(string s) =>
         DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt)
             ? dt : null;
+
+    // ==================== OpenCode Go(sk- API Key,官方使用量端点) ====================
+    // GET https://opencode.ai/zen/go/v1/usage
+    // Authorization: Bearer sk-...(opencode.ai 控制台的 API Key;控制台会话 Cookie 走另一端点,不通用)
+    // 响应形态(CodexBar 实测):{ usage: { rolling|weekly|monthly: { percent, resetsAt }, ... } }
+    // percent 为 0-100(CodexBar 口径),resetsAt 为 ISO 时间;部分版本可能带 usedDollars/limitDollars(美元限额)。
+
+    private const string OpenCodeUsageUrl = "https://opencode.ai/zen/go/v1/usage";
+
+    public async Task<PlanStatus> QueryOpenCodeAsync(string key)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, OpenCodeUsageUrl);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                return Err("OpenCode Go", $"鉴权失败(HTTP {(int)resp.StatusCode}),请检查 API Key(sk-,opencode.ai/console)");
+            if (!resp.IsSuccessStatusCode)
+                return Err("OpenCode Go", $"API 错误(HTTP {(int)resp.StatusCode})");
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return ParseOpenCodeUsage(doc.RootElement);
+        }
+        catch (Exception ex)
+        {
+            return Err("OpenCode Go", $"网络错误:{ex.Message}");
+        }
+    }
+
+    /// <summary>解析 zen/go/v1/usage 响应多余字段只取认识的部分;percent 0-100,0-1 分数形态防御式换算。</summary>
+    internal static PlanStatus ParseOpenCodeUsage(JsonElement root)
+    {
+        if (root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
+            return Err("OpenCode Go", $"API 错误:{Str(err, "message")}");
+        if (!(root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object))
+            return Err("OpenCode Go", "响应中没有 usage 字段");
+
+        // 逐窗口取节点;percent 在窗口节点内。0-1 分数形态判定:全组 ≤1 且有非零值时 ×100
+        var wins = new[] { TryWin(usage, "rolling"), TryWin(usage, "weekly"), TryWin(usage, "monthly") };
+        var raws = wins.Select(w => w.Ok ? TryNum(w.Node, "percent", "usagePercent", "usedPercent") : 0.0).ToArray();
+        bool fraction = raws.All(v => v >= 0 && v <= 1) && raws.Any(v => v > 0);
+
+        var windows = new List<QuotaWindow>();
+        string[] labels = { "5h", "周", "月" };
+        for (int i = 0; i < wins.Length; i++)
+        {
+            var w = wins[i];
+            if (!w.Ok) continue;
+            double pct = fraction ? raws[i] * 100.0 : raws[i];
+            if (pct == 0 && w.Ok)
+            {
+                double usedD = TryNum(w.Node, "usedDollars", "usageDollars"),
+                       limitD = TryNum(w.Node, "limitDollars", "limit");
+                if (limitD > 0) pct = Math.Clamp(usedD / limitD * 100.0, 0, 100);
+            }
+            windows.Add(MakeOpenCodeWindow(labels[i], Math.Clamp(pct, 0, 100), w.Reset, w.Node));
+        }
+        if (windows.Count == 0)
+            return Err("OpenCode Go", "响应中没有可解析的额度窗口(rolling/weekly/monthly)");
+
+        // 顶层可能带 plan:go / go-plus → 展示名
+        string plan = Str(root, "plan");
+        if (plan.Length == 0) plan = Str(usage, "plan");
+        string planName = plan.ToLowerInvariant() switch
+        {
+            var s when s.Contains("plus") => "Go Plus",
+            var s when s.Contains("go") => "Go",
+            { Length: > 0 } s => s,
+            _ => "Go",
+        };
+        return Ok("OpenCode Go", windows, planName, null);
+    }
+
+    /// <summary>单窗口:(名, 重置时间, 节点);节点缺失 = 该窗口未订阅,返回 false 跳过。</summary>
+    private static (bool Ok, DateTime? Reset, JsonElement Node) TryWin(JsonElement usage, string name)
+    {
+        if (!(usage.TryGetProperty(name, out var win) &&
+              win.ValueKind is JsonValueKind.Object))
+            return (false, DateTime.MinValue, default);
+        DateTime? reset = TryReset(win, "resetsAt", "resetAt", "reset_at");
+        if (reset == null)
+        {
+            double sec = TryNum(win, "resetInSeconds", "resets_in_seconds");
+            if (sec > 0) reset = DateTime.UtcNow.AddSeconds(sec);
+        }
+        return (true, reset, win.Clone());
+    }
+
+    /// <summary>百分比窗口;若响应带 usedDollars/limitDollars(美元限额)则一并记入绝对值。</summary>
+    private static QuotaWindow MakeOpenCodeWindow(string label, double pct, DateTime? reset, JsonElement node)
+    {
+        double usedD = TryNum(node, "usedDollars", "usageDollars"),
+               limitD = TryNum(node, "limitDollars", "limit");
+        if (limitD > 0)
+            return new QuotaWindow(label, pct, Math.Max(0, limitD - usedD), limitD, reset);
+        return new QuotaWindow(label, pct, null, null, reset);
+    }
+
+    /// <summary>按候选字段名取第一个数值;不存在返回 0(与 ParseD 一致,仅在兜底语境使用)。</summary>
+    private static double TryNum(JsonElement obj, params string[] props)
+    {
+        foreach (var p in props)
+            if (obj.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number)
+                return v.GetDouble();
+        return 0;
+    }
+
+    /// <summary>按候选字段名取 ISO 重置时间。</summary>
+    private static DateTime? TryReset(JsonElement obj, params string[] props)
+    {
+        foreach (var p in props)
+            if (obj.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                var dt = ParseResetTime(v);
+                if (dt != null) return dt;
+            }
+        return null;
+    }
 
     // ==================== 火山方舟 Agent/Coding Plan(非官方) ====================
     // 控制面 OpenAPI(非推理域名),需火山引擎 AK/SK 签名 V4(推理 API Key 无法使用):

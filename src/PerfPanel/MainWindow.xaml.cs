@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly PanelOrientation? _cliOrientation;
     private PanelOrientation _orientation = PanelOrientation.Portrait;
     private double _todoFontSize = 13;   // 待办行字号(横屏大卡片放大)
+    private static double _cardAlpha = 1.0; // 卡片不透明度(代码生成卡片内配色时同步缩放 Alpha)
     private bool _sampling;
     private int _lastPlanMinute = -1;
     private DateTime _reminderActiveUntilUtc = DateTime.MinValue;
@@ -129,8 +130,9 @@ public partial class MainWindow : Window
             topmost.Start();
         }
 
-        // 自截图:exe 旁存在 shot-request.txt(首行=输出 PNG 路径)时,启动 18s 后(传感器/额度已就绪)
-        // 以设计尺寸渲染整窗保存,随后删除请求文件。用于更新 README 效果图,不受屏幕捕获/DPI 影响。
+        // 自截图:exe 旁存在 shot-request.txt(首行=输出 PNG 路径)时,启动 18s 后等 UI 数据就绪
+        // (传感器已填充且额度查询结束,最长再等 42s)以设计尺寸渲染整屏保存,随后删除请求文件。
+        // 用于更新 README 效果图,不受屏幕捕获/DPI 影响;数据未就绪绝不截半初始化状态。
         _ = Task.Run(async () =>
         {
             ShotLog("queued"); // 任务已入队
@@ -142,10 +144,19 @@ public partial class MainWindow : Window
                 string outPath = File.ReadAllLines(marker).FirstOrDefault()?.Trim() ?? "";
                 if (outPath.Length == 0) { ShotLog("empty outPath"); return; }
                 ShotLog($"render {outPath}");
+                for (int i = 0; i < 42; i++)
+                {
+                    bool ready = await Dispatcher.InvokeAsync(IsShotDataReady);
+                    if (ready) { ShotLog("data ready"); break; }
+                    if (i == 41) ShotLog("render on timeout(数据就绪超时,兜底渲染)");
+                    await Task.Delay(1000);
+                }
+                // 渲染设计画布本身(440×1920 / 1920×440):不受窗口 letterbox 影响,
+                // 也避免设置窗口开着时把设置窗渲进去
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    var rtb = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
-                    rtb.Render(this);
+                    var rtb = new RenderTargetBitmap((int)layoutRoot.ActualWidth, (int)layoutRoot.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                    rtb.Render(layoutRoot);
                     var enc = new PngBitmapEncoder();
                     enc.Frames.Add(BitmapFrame.Create(rtb));
                     using var fs = File.Create(outPath);
@@ -156,6 +167,16 @@ public partial class MainWindow : Window
             }
             catch (Exception ex) { ShotLog($"ERR {ex.GetType().Name}: {ex.Message}"); }
         });
+    }
+
+    /// <summary>自截图就绪门控:传感器名称已填充,且(若启用额度查询)查询已出结果。</summary>
+    private bool IsShotDataReady()
+    {
+        if (txtCpuName.Text.Length == 0 || txtGpuName.Text.Length == 0) return false;
+        var c = Config.Current;
+        if (c.ShowCodingPlan && _codingPlan.AnyKeyConfigured && _codingPlan.Current.Count == 0) return false;
+        if (c.ShowWeather && _weather.Current == null) return false;
+        return true;
     }
 
     /// <summary>自截图诊断日志(exe 旁 shot-last.log)。</summary>
@@ -222,8 +243,95 @@ public partial class MainWindow : Window
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;
+        ApplyCardAlpha(c.CardOpacity);
+        ApplyBackgroundImage();
         ApplyScale(c.Scale);
         UpdateLandscapeSpans();
+    }
+
+    /// <summary>背景图不透明度滑杆拖动时的轻量应用:只改图透明度与卡片刷子,不重新解码图片。</summary>
+    public void ApplyBackgroundOpacity()
+    {
+        var c = Config.Current;
+        bgImage.Opacity = Math.Clamp(c.BackgroundOpacity, 0, 1);
+        ApplyCardAlpha(c.CardOpacity);
+    }
+
+    /// <summary>背景图:等比填充铺满设计画布,其余元素叠在其上;限宽解码避免 8K 壁纸整张进内存。
+    /// 文件缺失/损坏时回退默认深色底。</summary>
+    private void ApplyBackgroundImage()
+    {
+        string path = Config.Current.BackgroundImagePath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            bgImage.Visibility = Visibility.Collapsed;
+            return;
+        }
+        try
+        {
+            var bmp = new BitmapImage();
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad; // 读入内存后即释放文件句柄,源文件可随时替换
+                bmp.StreamSource = fs;
+                bmp.DecodePixelWidth = 2560;
+                bmp.EndInit();
+            }
+            bmp.Freeze();
+            bgImage.Source = bmp;
+            bgImage.Opacity = Math.Clamp(Config.Current.BackgroundOpacity, 0, 1);
+            bgImage.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            bgImage.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>卡片不透明度:重建面板局部覆盖的三支卡片刷子(颜色不变、Alpha 缩放),DynamicResource 全部生效。</summary>
+    private void ApplyCardAlpha(double alpha)
+    {
+        _cardAlpha = Math.Clamp(alpha, 0, 1);
+        SetCardBrush("CardBgBrush", 0x11, 0x1A, 0x2E);
+        SetCardBrush("CardBorderBrush", 0x22, 0x30, 0x52);
+        SetCardBrush("CardInnerBrush", 0x0F, 0x1B, 0x33);
+    }
+
+    private void SetCardBrush(string key, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb((byte)Math.Round(byte.MaxValue * _cardAlpha), r, g, b));
+        brush.Freeze();
+        layoutRoot.Resources[key] = brush;
+    }
+
+    /// <summary>按当前卡片不透明度缩放 Alpha 的卡片内配色(提醒条等代码生成区域)。</summary>
+    private static Brush ScaledCardBrush(string hex)
+    {
+        var c = (Color)ColorConverter.ConvertFromString(hex);
+        c.A = (byte)Math.Round(c.A * _cardAlpha);
+        return new SolidColorBrush(c);
+    }
+
+    // ---------- 加载态:查询中占位呼吸 ----------
+
+    /// <summary>数据未就绪时占位文本呼吸闪烁(慢速往复),避免启动/查询期间面板显得"空死"。</summary>
+    private static void StartBreathing(TextBlock? tb)
+    {
+        if (tb == null) return;
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(0.35, 1, new Duration(TimeSpan.FromSeconds(1.1)))
+        {
+            AutoReverse = true,
+            RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+        };
+        tb.BeginAnimation(TextBlock.OpacityProperty, anim);
+    }
+
+    private static void StopBreathing(TextBlock? tb)
+    {
+        if (tb == null) return;
+        tb.BeginAnimation(TextBlock.OpacityProperty, null);
+        tb.Opacity = 1;
     }
 
     /// <summary>缩放:设计画布按 1/s 缩小,Viewbox 等比放大内容铺满屏幕(竖 440×1920 / 横 1920×440)。</summary>
@@ -301,8 +409,8 @@ public partial class MainWindow : Window
         MoveTo(portFooter, txtFooter);
 
         txtTime.FontSize = 58;
-        txtTime.Margin = new Thickness(0, 10, 0, 0);
-        txtHint.Margin = new Thickness(0, 8, 0, 0);
+        txtTime.Margin = new Thickness(0, 8, 0, 0);
+        txtHint.Margin = new Thickness(0, 6, 0, 0);
         txtDate.Margin = new Thickness(0);
         txtDate.VerticalAlignment = VerticalAlignment.Stretch;
         txtUptime.Margin = new Thickness(0);
@@ -314,23 +422,24 @@ public partial class MainWindow : Window
                      cardCpu, cardGpu, cardMemory, cardNetwork, cardNotes, cardWeather, cardCodingPlan
                  })
         {
-            card.Margin = new Thickness(0, 0, 0, 12);
+            card.Margin = new Thickness(0, 0, 0, 10);
             MoveTo(portCards, card);
         }
 
-        // 竖版:大数字 + 进度条 + 历史曲线,统计 2×2 全量
+        // 竖版:历史曲线适度压缩,给 5 家额度卡河道留足(否则累计超过 1920 设计高度,CODING PLAN 会被截断)
         SetCompactTiles(compact: false);
         cpuGraph.Visibility = Visibility.Visible;
         gpuGraph.Visibility = Visibility.Visible;
-        cpuGraph.Height = 96;
-        gpuGraph.Height = 96;
-        netGraph.Height = 64;
+        cpuGraph.Height = 80;
+        gpuGraph.Height = 80;
+        netGraph.Height = 52;
+        cardCodingPlan.MaxHeight = 640;   // 兜底:额度卡超限时内部 planScroll 滚动,信息可达
         txtCpuName.MaxWidth = 240;
         txtGpuName.MaxWidth = 240;
         txtNoteText.FontSize = 15;
         txtNotesReminder.FontSize = 12;
         MoveTo(notesMainCol, gridPomodoro, 1);      // 竖屏窄:番茄钟堆叠回 便签 与 待办 之间
-        gridPomodoro.Margin = new Thickness(0, 12, 0, 0);
+        gridPomodoro.Margin = new Thickness(0, 10, 0, 0);
         ringPomo.Width = ringPomo.Height = 92;
         txtPomoPhase.FontSize = 15;
         txtPomoHint.FontSize = 12;
@@ -373,6 +482,9 @@ public partial class MainWindow : Window
         txtPomoPhase.FontSize = 16;
         txtPomoHint.FontSize = 13;
         _todoFontSize = 15;
+
+        // 解除竖屏限额(WPF MaxHeight 不接受 NaN,须用正无穷重置)
+        cardCodingPlan.MaxHeight = double.PositiveInfinity;
 
         MoveTo(landCpuCell, cardCpu);
         cardCpu.Margin = new Thickness(0, 0, 12, 12);
@@ -433,8 +545,8 @@ public partial class MainWindow : Window
             {
                 grid.RowDefinitions.Clear();
                 grid.ColumnDefinitions.Clear();
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 46 });
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 46 });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 42 });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 42 });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 for (int i = 0; i < 4; i++)
@@ -700,7 +812,21 @@ public partial class MainWindow : Window
             return;
         }
         var w = _weather.Current;
-        if (w == null) return;
+        if (w == null)
+        {
+            // 天气/IP 定位尚未完成:显示占位卡(呼吸闪烁),避免上排磁贴旁整格空白
+            cardWeather.Visibility = Visibility.Visible;
+            UpdateLandscapeSpans();
+            txtWeatherTemp.Text = "--°";
+            txtWeatherDesc.Text = "";
+            txtWeatherRange.Text = "";
+            txtWeatherCity.Text = "获取位置/天气中…";
+            StartBreathing(txtWeatherCity);
+            txtWind.Text = "--"; txtUv.Text = "--";
+            cellAqi.Visibility = Visibility.Collapsed;
+            return;
+        }
+        StopBreathing(txtWeatherCity);
         cardWeather.Visibility = Visibility.Visible;
         UpdateLandscapeSpans();
         txtWeatherTemp.Text = $"{w.TempC:F0}°";
@@ -778,8 +904,10 @@ public partial class MainWindow : Window
         if (_codingPlan.Current.Count == 0)
         {
             txtPlanRefresh.Text = "查询中…";
+            StartBreathing(txtPlanRefresh);   // 额度查询进行中:占位文本呼吸闪烁
             return;
         }
+        StopBreathing(txtPlanRefresh);
         int remain = (int)Math.Ceiling((_codingPlan.LastRefreshUtc + CodingPlanService.RefreshInterval - DateTime.UtcNow).TotalMinutes);
         txtPlanRefresh.Text = remain > 0 ? $"{remain}分钟后刷新" : "刷新中…";
 
@@ -789,10 +917,10 @@ public partial class MainWindow : Window
             .Select(p => compact ? BuildCompactPlanSection(p) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
-        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐
+        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 5 家后图例文本靠截断收窄
         if (compact && sections.Count > 1)
         {
-            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 4) };
+            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 5) };
             foreach (var s in sections)
                 grid.Children.Add(s);
             planRows.Children.Add(grid);
@@ -807,7 +935,7 @@ public partial class MainWindow : Window
     /// <summary>竖屏供应商区块:标题行(名称+主值) + 每限额窗口一行(标签/用量条/剩余/重置倒计时)。</summary>
     private static StackPanel BuildPlanSection(PlanStatus p)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
 
         // ---- 标题行 ----
         var head = new Grid { Margin = new Thickness(0, 0, 0, 0) };
@@ -972,7 +1100,7 @@ public partial class MainWindow : Window
     private static Grid BuildPlanWindowRow(QuotaWindow w)
     {
         double used = w.UsedPercent ?? 0;
-        var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+        var row = new Grid { Margin = new Thickness(0, 6, 0, 0) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1100,14 +1228,14 @@ public partial class MainWindow : Window
 
         if (active)
         {
-            rowNotesReminder.Background = BrushFromHex("#3A2B10");
+            rowNotesReminder.Background = ScaledCardBrush("#3A2B10");
             txtNotesReminder.Text = "⏰ " + _activeReminderText;
             txtNotesReminder.Foreground = BrushFromHex("#FBBF24");
             txtNotesReminder.FontWeight = FontWeights.Bold;
         }
         else
         {
-            rowNotesReminder.Background = BrushFromHex("#152340");
+            rowNotesReminder.Background = ScaledCardBrush("#152340");
             txtNotesReminder.Text = $"💡 {_notes.NextMessagePreview} · {remainMin}分钟后提醒";
             txtNotesReminder.Foreground = BrushFromHex("#8FA3C8");
             txtNotesReminder.FontWeight = FontWeights.Normal;
@@ -1174,7 +1302,7 @@ public partial class MainWindow : Window
     {
         var row = new Grid
         {
-            Margin = new Thickness(2, 0, 2, 7),
+            Margin = new Thickness(2, 0, 2, 6),
             Background = Brushes.Transparent, // 空白处也可点击
             Cursor = Cursors.Hand,
         };

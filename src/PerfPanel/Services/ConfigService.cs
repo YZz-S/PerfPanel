@@ -13,6 +13,11 @@ public sealed class AppConfig
     public bool ShowHint { get; set; } = true;
     public bool ShowFooter { get; set; } = true;      // 底部 SYSTEM MONITOR 状态行
     public string BrandText { get; set; } = "PERF PANEL"; // 左上角标题文字;空 = 隐藏
+
+    // ---- 背景自定义 ----
+    public string BackgroundImagePath { get; set; } = ""; // 自定义背景图(设置里选择后复制到 exe 旁的副本路径;空 = 默认深色底)
+    public double BackgroundOpacity { get; set; } = 0.45; // 背景图不透明度 0~1
+    public double CardOpacity { get; set; } = 1.0;        // 卡片不透明度 0~1(1 = 不透明;调低可透出背景图)
     public string AmapKey { get; set; } = "";         // 高德 Web服务 Key;空 = Open-Meteo 免费源
 
     // ---- Coding Plan 额度 ----
@@ -22,6 +27,7 @@ public sealed class AppConfig
     public string VolcAk { get; set; } = "";          // 火山引擎 AccessKey ID(控制台 IAM,非推理 API Key)
     public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
     public string MimoCookie { get; set; } = "";      // MiMo 控制台 Cookie 头(须含 api-platform_serviceToken + userId;查余额与 Token Plan 用量)
+    public string OpenCodeKey { get; set; } = "";     // OpenCode Go API Key(sk-,opencode.ai 控制台;查 Go 订阅 5h/周/月用量)
 
     // ---- 便签 / 待办 ----
     public bool ShowNotes { get; set; } = true;       // 便签待办卡片(内容存 notes.json)

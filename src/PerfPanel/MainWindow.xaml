@@ -8,7 +8,18 @@
         TextOptions.TextRenderingMode="ClearType">
 
     <Viewbox Stretch="Uniform">
+        <!-- 卡片刷子局部覆盖(仅主面板半透明,设置窗口沿用 App 级不透明回退):
+             ApplyCardAlpha 按卡片不透明度整体重建这三支刷子 -->
         <Grid x:Name="layoutRoot" Width="440" Height="1920">
+            <Grid.Resources>
+                <SolidColorBrush x:Key="CardBgBrush" Color="#FF111A2E"/>
+                <SolidColorBrush x:Key="CardBorderBrush" Color="#FF223052"/>
+                <SolidColorBrush x:Key="CardInnerBrush" Color="#FF0F1B33"/>
+            </Grid.Resources>
+
+            <!-- 自定义背景图:等比填充铺满画布,其余元素叠在其上;透明度/路径由 ApplyBackground 控制 -->
+            <Image x:Name="bgImage" Stretch="UniformToFill" Visibility="Collapsed"
+                   Opacity="0.45" IsHitTestVisible="False"/>
 
             <!-- ================================================================
                  竖版 440×1920(卡片在此声明,横竖两套骨架共用,切换时由代码重新挂载)
@@ -21,7 +32,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- ======================= 头部:品牌 / 时钟 ======================= -->
-                <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,18,20,0" Background="Transparent"
+                <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,14,20,0" Background="Transparent"
                             MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
                     <Grid>
                         <TextBlock x:Name="txtBrandPort" Text="PERF PANEL" FontSize="15" FontWeight="Bold">
@@ -56,7 +67,7 @@
                 </StackPanel>
 
                 <!-- ======================= 中部:数据卡片 ======================= -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,14,16,0">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,12,16,0">
                     <StackPanel x:Name="portCards">
 
                         <!-- CPU -->
@@ -246,7 +257,7 @@
 
                                 <!-- 番茄钟:进度环 + 段状态 + 控制按钮(填满便签空白区) -->
                                 <Border x:Name="gridPomodoro" Margin="0,12,0,0" Padding="10,10" CornerRadius="10"
-                                        Background="#0F1B33">
+                                        Background="{DynamicResource CardInnerBrush}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -370,7 +381,7 @@
                 </ScrollViewer>
 
                 <!-- ======================= 底部装饰 ======================= -->
-                <StackPanel x:Name="portFooter" Grid.Row="2" Margin="20,10,20,16">
+                <StackPanel x:Name="portFooter" Grid.Row="2" Margin="20,8,20,12">
                     <Border Height="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">

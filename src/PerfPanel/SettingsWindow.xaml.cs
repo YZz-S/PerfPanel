@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -32,10 +33,18 @@ public partial class SettingsWindow : Window
         txtVolcAk.Text = c.VolcAk;
         txtVolcSk.Text = c.VolcSk;
         txtMimoCookie.Text = c.MimoCookie;
+        txtOcKey.Text = c.OpenCodeKey;
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
         lblAutoStatus.Text = AutostartService.Status().Replace("\n", " · ");
+
+        // ---- 背景 ----
+        lblBgStatus.Text = DescribeBg(c.BackgroundImagePath);
+        sldBgOpacity.Value = Math.Clamp(c.BackgroundOpacity * 100, 0, 100);
+        lblBgOpacity.Text = $"{(int)Math.Round(sldBgOpacity.Value)}%";
+        sldCardOpacity.Value = Math.Clamp(c.CardOpacity * 100, 0, 100);
+        lblCardOpacity.Text = $"{(int)Math.Round(sldCardOpacity.Value)}%";
 
         // ---- 便签 / 专注提醒 ----
         var notes = _main.Notes;
@@ -193,6 +202,7 @@ public partial class SettingsWindow : Window
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
         btnMimoTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Mimo);
+        btnOcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.OpenCode);
 
         sldScale.ValueChanged += (_, _) =>
         {
@@ -214,6 +224,62 @@ public partial class SettingsWindow : Window
             Config.Current.BrandText = txtBrand.Text;
             Config.Save();
             _main.ApplyConfig();
+        };
+
+        // ---- 背景:选图复制到 exe 旁、清除、两根透明度滑杆即时预览 ----
+        btnPickBg.Click += async (_, _) =>
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "选择背景图片",
+                Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif|所有文件|*.*",
+                CheckFileExists = true,
+            };
+            if (dlg.ShowDialog(this) != true) return;
+            btnPickBg.IsEnabled = false;
+            try
+            {
+                string stored = await Task.Run(() => StoreBackgroundImage(dlg.FileName));
+                Config.Current.BackgroundImagePath = stored;
+                Config.Save();
+                _main.ApplyConfig();
+                lblBgStatus.Text = DescribeBg(stored);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"背景设置失败:{ex.Message}", "PerfPanel",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally { btnPickBg.IsEnabled = true; }
+        };
+
+        btnClearBg.Click += (_, _) =>
+        {
+            string old = Config.Current.BackgroundImagePath;
+            Config.Current.BackgroundImagePath = "";
+            Config.Save();
+            _main.ApplyConfig();
+            lblBgStatus.Text = DescribeBg("");
+            // 只清理本应用生成的 exe 旁副本,用户源图不动
+            string baseDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+            if (old.Length > 0 && Path.GetDirectoryName(old) == baseDir)
+                try { File.Delete(old); } catch { }
+        };
+
+        sldBgOpacity.ValueChanged += (_, _) =>
+        {
+            Config.Current.BackgroundOpacity = Math.Round(sldBgOpacity.Value / 100.0, 2);
+            lblBgOpacity.Text = $"{(int)Math.Round(sldBgOpacity.Value)}%";
+            Config.Save();
+            _main.ApplyBackgroundOpacity();
+        };
+
+        sldCardOpacity.ValueChanged += (_, _) =>
+        {
+            Config.Current.CardOpacity = Math.Round(sldCardOpacity.Value / 100.0, 2);
+            lblCardOpacity.Text = $"{(int)Math.Round(sldCardOpacity.Value)}%";
+            Config.Save();
+            _main.ApplyBackgroundOpacity();
         };
 
         btnAutoOn.Click += (_, _) =>
@@ -244,7 +310,34 @@ public partial class SettingsWindow : Window
         _main.ApplyConfig();
     }
 
-    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo }
+    // ---- 背景图 ----
+
+    private static readonly string[] BgExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif" };
+
+    /// <summary>状态行文字:显示当前背景图路径,文件缺失时给出回退提示。</summary>
+    private static string DescribeBg(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return "未设置(默认深色底)";
+        return File.Exists(path) ? path : $"{path}(文件缺失,已回退默认底色)";
+    }
+
+    /// <summary>把所选图片复制到 exe 旁(bg.<原扩展名>,清掉旧扩展名的残留副本,背景随程序走),返回副本路径。</summary>
+    private static string StoreBackgroundImage(string srcPath)
+    {
+        var ext = Path.GetExtension(srcPath).ToLowerInvariant();
+        if (!BgExtensions.Contains(ext)) ext = ".png"; // 无法识别的格式按内容嗅探解码,统一落到 bg.png
+        string dest = Path.Combine(AppContext.BaseDirectory, "bg" + ext);
+        foreach (var e in BgExtensions)
+        {
+            string old = Path.Combine(AppContext.BaseDirectory, "bg" + e);
+            if (!string.Equals(old, dest, StringComparison.OrdinalIgnoreCase) && File.Exists(old))
+                File.Delete(old);
+        }
+        File.Copy(srcPath, dest, overwrite: true);
+        return dest;
+    }
+
+    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo, OpenCode }
 
     /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
     private async Task SaveAndTestPlanAsync(PlanKind kind)
@@ -257,6 +350,7 @@ public partial class SettingsWindow : Window
             case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
             case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
             case PlanKind.Mimo: key = txtMimoCookie.Text.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
+            case PlanKind.OpenCode: key = txtOcKey.Text.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
             default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
@@ -283,6 +377,7 @@ public partial class SettingsWindow : Window
                 PlanKind.DeepSeek => await _main.CodingPlan.QueryDeepSeekAsync(key),
                 PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
                 PlanKind.Mimo => await _main.CodingPlan.QueryMimoAsync(key),
+                PlanKind.OpenCode => await _main.CodingPlan.QueryOpenCodeAsync(key),
                 _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
             };
             string msg = r.Ok
