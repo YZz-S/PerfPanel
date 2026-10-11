@@ -32,7 +32,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- ======================= 头部:品牌 / 时钟 ======================= -->
-                <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,18,20,0" Background="Transparent"
+                <StackPanel x:Name="portHeader" Grid.Row="0" Margin="20,14,20,0" Background="Transparent"
                             MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
                     <Grid>
                         <TextBlock x:Name="txtBrandPort" Text="PERF PANEL" FontSize="15" FontWeight="Bold">
@@ -67,7 +67,7 @@
                 </StackPanel>
 
                 <!-- ======================= 中部:数据卡片 ======================= -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,14,16,0">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Margin="16,12,16,0">
                     <StackPanel x:Name="portCards">
 
                         <!-- CPU -->
@@ -381,7 +381,7 @@
                 </ScrollViewer>
 
                 <!-- ======================= 底部装饰 ======================= -->
-                <StackPanel x:Name="portFooter" Grid.Row="2" Margin="20,10,20,16">
+                <StackPanel x:Name="portFooter" Grid.Row="2" Margin="20,8,20,12">
                     <Border Height="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
