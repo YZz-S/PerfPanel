@@ -4,9 +4,15 @@
 
 A dark, tech-style hardware monitoring panel built natively in WPF, designed for tall or wide USB-C portable monitors used as extended displays on Windows. The portrait 440×1920 single-column layout and the landscape 1920×440 two-column layout share the same card components, auto-switch by the display's shape, and can also be set manually.
 
-## Screenshot
+## Screenshots
 
-![Screenshot](image/panel-landscape.png)
+Landscape 1920×440 (live panel; showing the custom background from Settings → Display → Background, with adjustable image/card opacity):
+
+![Landscape screenshot](image/panel-landscape.png)
+
+Portrait 440×1920 (live panel):
+
+![Portrait screenshot](image/panel-portrait.png)
 
 ## Features
 

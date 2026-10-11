@@ -6,7 +6,13 @@
 
 ## 运行效果图
 
-![运行效果图](image/panel-landscape.png)
+横版 1920×440(实机截图,含自定义背景:设置 →「界面 / 自启」→ 背景选图并调不透明度):
+
+![横屏效果图](image/panel-landscape.png)
+
+竖版 440×1920(实机截图):
+
+![竖屏效果图](image/panel-portrait.png)
 
 ## 功能
 

@@ -8,7 +8,18 @@
         TextOptions.TextRenderingMode="ClearType">
 
     <Viewbox Stretch="Uniform">
+        <!-- 卡片刷子局部覆盖(仅主面板半透明,设置窗口沿用 App 级不透明回退):
+             ApplyCardAlpha 按卡片不透明度整体重建这三支刷子 -->
         <Grid x:Name="layoutRoot" Width="440" Height="1920">
+            <Grid.Resources>
+                <SolidColorBrush x:Key="CardBgBrush" Color="#FF111A2E"/>
+                <SolidColorBrush x:Key="CardBorderBrush" Color="#FF223052"/>
+                <SolidColorBrush x:Key="CardInnerBrush" Color="#FF0F1B33"/>
+            </Grid.Resources>
+
+            <!-- 自定义背景图:等比填充铺满画布,其余元素叠在其上;透明度/路径由 ApplyBackground 控制 -->
+            <Image x:Name="bgImage" Stretch="UniformToFill" Visibility="Collapsed"
+                   Opacity="0.45" IsHitTestVisible="False"/>
 
             <!-- ================================================================
                  竖版 440×1920(卡片在此声明,横竖两套骨架共用,切换时由代码重新挂载)
@@ -246,7 +257,7 @@
 
                                 <!-- 番茄钟:进度环 + 段状态 + 控制按钮(填满便签空白区) -->
                                 <Border x:Name="gridPomodoro" Margin="0,12,0,0" Padding="10,10" CornerRadius="10"
-                                        Background="#0F1B33">
+                                        Background="{DynamicResource CardInnerBrush}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>

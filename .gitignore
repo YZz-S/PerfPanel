@@ -12,6 +12,13 @@ dist/weather.json
 # 用户本地配置
 dist/config.json
 
+# 自定义背景图副本(设置里选图后复制到 exe 旁的个人数据)
+dist/bg.png
+dist/bg.jpg
+dist/bg.jpeg
+dist/bg.bmp
+dist/bg.gif
+
 # 火山额度查询诊断落盘(exe 旁,含账户用量数据)
 volc-last-response.json
 

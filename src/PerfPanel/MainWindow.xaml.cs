@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly PanelOrientation? _cliOrientation;
     private PanelOrientation _orientation = PanelOrientation.Portrait;
     private double _todoFontSize = 13;   // 待办行字号(横屏大卡片放大)
+    private static double _cardAlpha = 1.0; // 卡片不透明度(代码生成卡片内配色时同步缩放 Alpha)
     private bool _sampling;
     private int _lastPlanMinute = -1;
     private DateTime _reminderActiveUntilUtc = DateTime.MinValue;
@@ -144,8 +145,10 @@ public partial class MainWindow : Window
                 ShotLog($"render {outPath}");
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    var rtb = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
-                    rtb.Render(this);
+                    // 渲染设计画布本身(440×1920 / 1920×440):不受窗口 letterbox 影响,
+                    // 也避免设置窗口开着时把设置窗渲进去
+                    var rtb = new RenderTargetBitmap((int)layoutRoot.ActualWidth, (int)layoutRoot.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                    rtb.Render(layoutRoot);
                     var enc = new PngBitmapEncoder();
                     enc.Frames.Add(BitmapFrame.Create(rtb));
                     using var fs = File.Create(outPath);
@@ -222,8 +225,74 @@ public partial class MainWindow : Window
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
         if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
         if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;
+        ApplyCardAlpha(c.CardOpacity);
+        ApplyBackgroundImage();
         ApplyScale(c.Scale);
         UpdateLandscapeSpans();
+    }
+
+    /// <summary>背景图不透明度滑杆拖动时的轻量应用:只改图透明度与卡片刷子,不重新解码图片。</summary>
+    public void ApplyBackgroundOpacity()
+    {
+        var c = Config.Current;
+        bgImage.Opacity = Math.Clamp(c.BackgroundOpacity, 0, 1);
+        ApplyCardAlpha(c.CardOpacity);
+    }
+
+    /// <summary>背景图:等比填充铺满设计画布,其余元素叠在其上;限宽解码避免 8K 壁纸整张进内存。
+    /// 文件缺失/损坏时回退默认深色底。</summary>
+    private void ApplyBackgroundImage()
+    {
+        string path = Config.Current.BackgroundImagePath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            bgImage.Visibility = Visibility.Collapsed;
+            return;
+        }
+        try
+        {
+            var bmp = new BitmapImage();
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad; // 读入内存后即释放文件句柄,源文件可随时替换
+                bmp.StreamSource = fs;
+                bmp.DecodePixelWidth = 2560;
+                bmp.EndInit();
+            }
+            bmp.Freeze();
+            bgImage.Source = bmp;
+            bgImage.Opacity = Math.Clamp(Config.Current.BackgroundOpacity, 0, 1);
+            bgImage.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            bgImage.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>卡片不透明度:重建面板局部覆盖的三支卡片刷子(颜色不变、Alpha 缩放),DynamicResource 全部生效。</summary>
+    private void ApplyCardAlpha(double alpha)
+    {
+        _cardAlpha = Math.Clamp(alpha, 0, 1);
+        SetCardBrush("CardBgBrush", 0x11, 0x1A, 0x2E);
+        SetCardBrush("CardBorderBrush", 0x22, 0x30, 0x52);
+        SetCardBrush("CardInnerBrush", 0x0F, 0x1B, 0x33);
+    }
+
+    private void SetCardBrush(string key, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb((byte)Math.Round(byte.MaxValue * _cardAlpha), r, g, b));
+        brush.Freeze();
+        layoutRoot.Resources[key] = brush;
+    }
+
+    /// <summary>按当前卡片不透明度缩放 Alpha 的卡片内配色(提醒条等代码生成区域)。</summary>
+    private static Brush ScaledCardBrush(string hex)
+    {
+        var c = (Color)ColorConverter.ConvertFromString(hex);
+        c.A = (byte)Math.Round(c.A * _cardAlpha);
+        return new SolidColorBrush(c);
     }
 
     /// <summary>缩放:设计画布按 1/s 缩小,Viewbox 等比放大内容铺满屏幕(竖 440×1920 / 横 1920×440)。</summary>
@@ -1100,14 +1169,14 @@ public partial class MainWindow : Window
 
         if (active)
         {
-            rowNotesReminder.Background = BrushFromHex("#3A2B10");
+            rowNotesReminder.Background = ScaledCardBrush("#3A2B10");
             txtNotesReminder.Text = "⏰ " + _activeReminderText;
             txtNotesReminder.Foreground = BrushFromHex("#FBBF24");
             txtNotesReminder.FontWeight = FontWeights.Bold;
         }
         else
         {
-            rowNotesReminder.Background = BrushFromHex("#152340");
+            rowNotesReminder.Background = ScaledCardBrush("#152340");
             txtNotesReminder.Text = $"💡 {_notes.NextMessagePreview} · {remainMin}分钟后提醒";
             txtNotesReminder.Foreground = BrushFromHex("#8FA3C8");
             txtNotesReminder.FontWeight = FontWeights.Normal;
