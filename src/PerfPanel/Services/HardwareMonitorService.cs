@@ -37,12 +37,19 @@ public sealed class HardwareMonitorService : IDisposable
     private ISensor? _ramLoad, _ramUsedGb;
     private bool _gpuFanPercent;
     private IHardware? _cpuHw, _gpuHw;   // 懒重选用:部分传感器(如 ADLX 功耗)启动后延迟出现
+    private List<IHardware> _gpus = [];  // 全部 GPU(核显+独显),供设置里切换监控对象
     private DateTime _lastAcceptUtc;     // LHM 全量遍历限频:传感器值在两次遍历间保持上次读数
 
     public bool IsAvailable { get; private set; }
     public string CpuName { get; private set; } = "";
     public string GpuName { get; private set; } = "";
     public float RamTotalGb { get; private set; }
+
+    /// <summary>LHM 枚举到的全部 GPU 名称(设置窗口下拉数据源)。</summary>
+    public IReadOnlyList<string> GpuNames => _gpus.Select(g => g.Name).ToList();
+
+    /// <summary>当前选中的 GPU 序号(-1 = 自动:优先有温度传感器的独显)。</summary>
+    public int SelectedGpuIndex { get; private set; } = -1;
 
     public void Initialize()
     {
@@ -117,40 +124,13 @@ public sealed class HardwareMonitorService : IDisposable
             break;
         }
 
-        // GPU 指标:双显卡(核显+独显)时优先选有温度传感器的独显,避免名称/占用取核显、温度取独显的混取
-        var gpu = _computer.Hardware
+        // GPU 指标:config 指定了序号就用它,否则自动(优先有温度传感器的独显,
+        // 避免双显卡时名称/占用取核显、温度取独显的混取)
+        _gpus = _computer.Hardware
             .Where(h => h.HardwareType is HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel)
-            .OrderByDescending(h => h.Sensors.Any(s => s.SensorType == SensorType.Temperature))
-            .ThenByDescending(h => h.HardwareType == HardwareType.GpuNvidia)
-            .FirstOrDefault();
-        if (gpu != null)
-        {
-            _gpuHw = gpu;
-            GpuName = gpu.Name;
-            _gpuLoad ??= Find(gpu, SensorType.Load, ["GPU Core", "D3D 3D"]);
-            _gpuTemp ??= Find(gpu, SensorType.Temperature, ["GPU Core", "GPU Package"]);
-            // 各家核显/独显温度名不统一(如 AMD 核显只有 "GPU VR SoC"),按核心/SoC 优先兜底选一路
-            _gpuTemp ??= gpu.Sensors
-                .Where(s => s.SensorType == SensorType.Temperature)
-                .OrderByDescending(s => GpuTempRank(s.Name))
-                .ThenBy(s => s.Index)
-                .FirstOrDefault();
-            _gpuPower = Find(gpu, SensorType.Power, ["GPU Package", "GPU Power", "GPU Board Power", "GPU Core"]) ?? _gpuPower;
-            foreach (var s in gpu.Sensors)
-            {
-                var n = s.Name.ToLowerInvariant();
-                if (s.SensorType is SensorType.Fan or SensorType.Control && n.Contains("fan"))
-                {
-                    _gpuFan ??= s;
-                    _gpuFanPercent = s.SensorType == SensorType.Control;
-                }
-                if (s.SensorType == SensorType.SmallData)
-                {
-                    if (n.Contains("used")) _gpuVramUsed ??= s;
-                    if (n.Contains("total")) _gpuVramTotal ??= s;
-                }
-            }
-        }
+            .ToList();
+        SelectedGpuIndex = Config.Current.GpuIndex;   // 上次选择的 GPU 序号(越界时 ApplySelectedGpu 自动回退)
+        ApplySelectedGpu();
 
         // 内存总量:物理内存传感器(GB)
         foreach (var hw in _computer.Hardware.Where(h => h.HardwareType == HardwareType.Memory))
@@ -173,6 +153,37 @@ public sealed class HardwareMonitorService : IDisposable
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    /// <summary>自动挑 GPU:优先有温度传感器的,其次 N 卡(传感器命名最规范)。</summary>
+    private IHardware? PickAutoGpu() => _gpus
+        .OrderByDescending(h => h.Sensors.Any(s => s.SensorType == SensorType.Temperature))
+        .ThenByDescending(h => h.HardwareType == HardwareType.GpuNvidia)
+        .FirstOrDefault();
+
+    /// <summary>按 SelectedGpuIndex 重选 GPU 并清空旧传感器引用,由 RePickMissing 立即重选。
+    /// 切换只换传感器指向,不打断采样循环。</summary>
+    private void ApplySelectedGpu()
+    {
+        var gpu = SelectedGpuIndex >= 0 && SelectedGpuIndex < _gpus.Count
+            ? _gpus[SelectedGpuIndex]
+            : PickAutoGpu();
+        SelectedGpuIndex = gpu != null
+            ? _gpus.IndexOf(gpu)
+            : -1;
+        _gpuLoad = _gpuTemp = _gpuPower = _gpuFan = _gpuVramUsed = _gpuVramTotal = null;
+        _gpuHw = gpu;
+        GpuName = gpu?.Name ?? "";
+        RePickMissing();
+    }
+
+    /// <summary>切换监控的 GPU(index = LHM 枚举序号,-1 = 自动)。越序号返回 false 不生效。</summary>
+    public bool SelectGpu(int index)
+    {
+        if (index < -1 || index >= _gpus.Count) return false;
+        SelectedGpuIndex = index;
+        ApplySelectedGpu();
+        return true;
     }
 
     /// <summary>核心时钟名:Intel "CPU Core #N" / AMD "Core #N"(排除 Max/有效时钟等衍生名)。</summary>

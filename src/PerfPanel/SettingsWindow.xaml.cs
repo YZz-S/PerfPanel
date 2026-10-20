@@ -12,6 +12,8 @@ public partial class SettingsWindow : Window
 {
     private readonly MainWindow _main;
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private string[] _gpuNames = [];       // 下拉当前已填充的 GPU 列表(变化才重建,避免打断选择)
+    private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
 
     public SettingsWindow(MainWindow main)
     {
@@ -34,6 +36,8 @@ public partial class SettingsWindow : Window
         txtVolcSk.Text = c.VolcSk;
         txtMimoCookie.Text = c.MimoCookie;
         txtOcKey.Text = c.OpenCodeKey;
+        chkShowLmStudio.IsChecked = c.ShowLmStudio;
+        txtLmsPort.Text = c.LmStudioPort.ToString();
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
@@ -198,6 +202,32 @@ public partial class SettingsWindow : Window
         chkShowPlan.Checked += (_, _) => { Apply(c => c.ShowCodingPlan = true); _ = _main.RefreshCodingPlanAsync(); };
         chkShowPlan.Unchecked += (_, _) => Apply(c => c.ShowCodingPlan = false);
 
+        chkShowLmStudio.Checked += (_, _) => { Apply(c => c.ShowLmStudio = true); _main.RefreshLmStudioCard(); };
+        chkShowLmStudio.Unchecked += (_, _) => { Apply(c => c.ShowLmStudio = false); _main.RefreshLmStudioCard(); };
+        txtLmsPort.LostFocus += (_, _) =>
+        {
+            if (int.TryParse(txtLmsPort.Text.Trim(), out var p) && p is > 0 and < 65536)
+                Apply(c => c.LmStudioPort = p);
+            else
+                txtLmsPort.Text = Config.Current.LmStudioPort.ToString();
+        };
+
+        // ---- 监控 GPU:LHM 约 1s 后才枚举完,由 2s 状态定时器增量填充下拉 ----
+        cmbGpu.SelectionChanged += (_, _) =>
+        {
+            if (_suppressGpuEvent) return;
+            if (cmbGpu.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var idx))
+            {
+                Config.Current.GpuIndex = idx;   // -1 = 自动
+                Config.Save();
+                _main.ApplyGpuSelection();
+            }
+        };
+        UpdateGpuCombo();
+
+        // ---- 供应商显隐与排序 ----
+        ReloadPlanProviders();
+
         btnDsTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.DeepSeek);
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
@@ -297,10 +327,149 @@ public partial class SettingsWindow : Window
 
         btnClose.Click += (_, _) => Close();
 
-        // 城市定位是异步的,定时刷新状态行
-        _statusTimer.Tick += (_, _) => UpdateCityStatus();
+        // 城市定位是异步的,定时刷新状态行;顺带增量填充 GPU 下拉
+        _statusTimer.Tick += (_, _) => { UpdateCityStatus(); UpdateGpuCombo(); };
         _statusTimer.Start();
         UpdateCityStatus();
+    }
+
+    // ---- 监控 GPU ----
+
+    /// <summary>LHM 就绪后填充 GPU 下拉;列表未变化时不重建(避免打断正在展开的选择)。</summary>
+    private void UpdateGpuCombo()
+    {
+        if (!_main.Aggregator.Ready) return;   // 初始化中:保留 XAML 里的"初始化中…"占位
+        var names = _main.Aggregator.GpuNames;
+        if (names.Count == _gpuNames.Length && names.SequenceEqual(_gpuNames)) return;
+        _gpuNames = names.ToArray();
+
+        _suppressGpuEvent = true;
+        int sel = Config.Current.GpuIndex;
+        cmbGpu.Items.Clear();
+        cmbGpu.Items.Add(new ComboBoxItem
+        {
+            Content = names.Count > 1 ? "自动(优先有温度的独显)" : "自动",
+            Tag = "-1",
+        });
+        for (int i = 0; i < names.Count; i++)
+            cmbGpu.Items.Add(new ComboBoxItem { Content = names[i], Tag = i.ToString() });
+        cmbGpu.SelectedIndex = sel >= 0 && sel < names.Count ? sel + 1 : 0;
+        _suppressGpuEvent = false;
+
+        if (names.Count == 0)
+        {
+            lblGpuStatus.Text = _main.Aggregator.FullMode
+                ? "未检测到 GPU 传感器"
+                : "传感器不可用(BASIC 模式,以管理员运行可解锁),无法切换 GPU";
+            cmbGpu.IsEnabled = false;
+        }
+        else
+        {
+            lblGpuStatus.Text = names.Count == 1
+                ? $"检测到 1 块 GPU:{names[0]}"
+                : $"检测到 {names.Count} 块 GPU,当前:{(sel >= 0 && sel < names.Count ? names[sel] : "自动")}";
+            cmbGpu.IsEnabled = names.Count > 1;
+        }
+    }
+
+    // ---- Coding Plan 供应商显隐与排序 ----
+
+    /// <summary>当前生效顺序:config.PlanOrder 里列出的在前,未列出的按默认顺序排后(含隐藏项,便于恢复显示)。</summary>
+    private static string[] EffectivePlanOrder()
+    {
+        var names = CodingPlanService.ProviderNames;
+        var order = Config.Current.PlanOrder.Where(names.Contains).ToList();
+        order.AddRange(names.Except(order));
+        return order.ToArray();
+    }
+
+    /// <summary>重建供应商行:名称 | 显示勾选 | ↑↓ 移动。</summary>
+    private void ReloadPlanProviders()
+    {
+        planProviders.Children.Clear();
+        var order = EffectivePlanOrder();
+        for (int i = 0; i < order.Length; i++)
+        {
+            string name = order[i];
+            bool visible = CodingPlanService.IsVisible(name);
+
+            var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var label = new TextBlock
+            {
+                Text = name + (visible ? "" : "(已隐藏)"),
+                FontSize = 13,
+                Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(visible ? (byte)0xC9 : (byte)0x55, visible ? (byte)0xD6 : (byte)0x64, visible ? (byte)0xEE : (byte)0x8A)),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            row.Children.Add(label);
+
+            var chk = new CheckBox
+            {
+                Content = "显示",
+                FontSize = 12,
+                IsChecked = visible,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 4, 0),
+            };
+            chk.Checked += (_, _) => SetPlanVisible(name, true);
+            chk.Unchecked += (_, _) => SetPlanVisible(name, false);
+            Grid.SetColumn(chk, 1);
+            row.Children.Add(chk);
+
+            var btnUp = new Button
+            {
+                Content = "↑", Style = (Style)Resources["BtnStyle"], FontSize = 12,
+                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(4, 0, 0, 0),
+                IsEnabled = i > 0, ToolTip = "上移",
+            };
+            btnUp.Click += (_, _) => MovePlanProvider(name, -1);
+            Grid.SetColumn(btnUp, 2);
+            row.Children.Add(btnUp);
+
+            var btnDown = new Button
+            {
+                Content = "↓", Style = (Style)Resources["BtnStyle"], FontSize = 12,
+                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(4, 0, 0, 0),
+                IsEnabled = i < order.Length - 1, ToolTip = "下移",
+            };
+            btnDown.Click += (_, _) => MovePlanProvider(name, +1);
+            Grid.SetColumn(btnDown, 3);
+            row.Children.Add(btnDown);
+
+            planProviders.Children.Add(row);
+        }
+    }
+
+    private void SetPlanVisible(string name, bool visible)
+    {
+        var hidden = Config.Current.PlanHidden;
+        if (visible) hidden.Remove(name);
+        else if (!hidden.Contains(name)) hidden.Add(name);
+        Config.Save();
+        _main.CodingPlan.RefilterCurrent();
+        _main.RefreshPlanDisplay();
+        ReloadPlanProviders();
+    }
+
+    private void MovePlanProvider(string name, int delta)
+    {
+        var order = EffectivePlanOrder().ToList();
+        int i = order.IndexOf(name);
+        int j = i + delta;
+        if (i < 0 || j < 0 || j >= order.Count) return;
+        (order[i], order[j]) = (order[j], order[i]);
+        Config.Current.PlanOrder = order;   // 全量写回,序列化后的顺序稳定
+        Config.Save();
+        _main.CodingPlan.RefilterCurrent();
+        _main.RefreshPlanDisplay();
+        ReloadPlanProviders();
     }
 
     private void Apply(Action<AppConfig> change)

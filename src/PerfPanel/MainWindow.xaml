@@ -355,15 +355,16 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Coding Plan 额度:头部固定,滚动区占满剩余空间(内容再多也只在头部以下滚动,不会顶到标题) -->
+                        <!-- Coding Plan 额度 + LM Studio:头部固定,滚动区占满剩余空间(内容再多也只在头部以下滚动,不会顶到标题) -->
                         <Border x:Name="cardCodingPlan" Style="{StaticResource CardStyle}" Visibility="Collapsed">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid Grid.Row="0">
-                                    <TextBlock Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtPlanTitle" Text="CODING PLAN" Style="{StaticResource SectionTitleStyle}"/>
                                     <TextBlock x:Name="txtPlanRefresh" Text="" FontSize="10" Foreground="#55648A"
                                                HorizontalAlignment="Right" VerticalAlignment="Bottom" FontFamily="Consolas"/>
                                 </Grid>
@@ -374,6 +375,35 @@
                                     </ScrollViewer.Resources>
                                     <StackPanel x:Name="planRows" Margin="0,4,10,0"/>
                                 </ScrollViewer>
+
+                                <!-- LM Studio:模型加载态 / 并发调用 / prefill·decode 速度(数据取自本机服务日志,免鉴权) -->
+                                <Border x:Name="rowLmStudio" Grid.Row="2" Visibility="Collapsed" Margin="0,8,0,0"
+                                        Padding="10,7" CornerRadius="8" Background="{DynamicResource CardInnerBrush}">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="dotLms" Width="7" Height="7" VerticalAlignment="Center" Fill="#55648A"/>
+                                                <TextBlock Text="LM STUDIO" FontSize="11" FontWeight="Bold" Foreground="#8FA3C8"
+                                                           FontFamily="Consolas" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="txtLmsState" Text="" FontSize="11" Foreground="#55648A"
+                                                           Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <!-- 横屏:模型名挤进标题行(竖屏在速度行里展示),保证额度图例不被挤出可视区 -->
+                                            <TextBlock x:Name="txtLmsModel" Grid.Column="1" Text="" FontSize="11" FontFamily="Consolas"
+                                                       Foreground="#8FA3C8" Margin="10,0,8,0" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                                            <TextBlock x:Name="txtLmsInflight" Grid.Column="2" Text="" FontSize="12" FontWeight="Bold"
+                                                       FontFamily="Consolas" Foreground="#FBBF24" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <TextBlock x:Name="txtLmsSpeed" Text="" FontSize="12" FontFamily="Consolas"
+                                                   Margin="17,4,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </Border>
 

@@ -24,6 +24,7 @@ Portrait 440×1920 (live panel):
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
 - **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
 - **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage), OpenCode Go (5h/week/month usage) — remaining quota with reset countdowns
+- **LM Studio monitoring**: a strip at the bottom of the quota card shows whether the local LM Studio server is up, which model(s) are loaded, how many requests are in flight, and the latest prefill (prompt eval) / decode (eval) speeds in tok/s — parsed from LM Studio's own server log, no API token needed (newer builds require a Bearer token for the REST API and never store the plaintext token on disk)
 - **Custom title**: the top-left `PERF PANEL` label is editable in Settings → Display (any text/emoji, applies as you type; leave it empty to hide it)
 - **Custom background**: pick a local image in Settings → Display (png/jpg/bmp/gif; it is copied next to the exe so the panel keeps working even if the source file moves or is deleted); two live sliders adjust background-image opacity and card opacity — lowering the card opacity lets the image show through while text stays fully opaque; without an image the default dark backdrop is kept
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
@@ -117,6 +118,15 @@ Each item has "Save & Test" for instant validation; leave it empty and the panel
 
 > The GLM/Volcano/MiMo integrations use unofficial APIs (mirroring CC Switch / CodexBar), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields.
 
+## LM Studio monitoring
+
+The quota card carries an `LM STUDIO` strip (2 s refresh; toggle + port in Settings → "Coding Plan Quota" → LM Studio). Data comes from two local sources, so no API token is involved:
+
+- **Online check**: TCP probe of the server port (default `1234` — the port from LM Studio's Developer → Server page)
+- **Everything else**: LM Studio's server log at `%USERPROFILE%\.lmstudio\server-logs`. Request pairing (`Running chat completion` +1 vs `Finished streaming response` / `Generated prediction` −1) gives the in-flight count per model; the engine `print_timing` lines give the last prefill (prompt eval) and decode (eval) speeds; `Unloading model … due to TTL` removes a model instantly
+
+Shown state: server-down / inferring (with `并发 N` = N requests in flight) / `已加载 N 个模型` / idle. Since the log carries no authoritative loaded-model list without a token, "loaded" means in flight right now or active within the JIT-unload TTL window (default 5 min). In landscape the provider legend keeps only each provider's tightest quota window so the strip fits; portrait keeps all rows.
+
 ## Notes / todos / focus reminders
 
 The FOCUS card (a large card spanning the lower-left half in landscape) turns the secondary display into a focus board:
@@ -160,6 +170,7 @@ src/PerfPanel/
     ├── MonitorAggregator.cs       # dual-source aggregation, field-level merging
     ├── NetworkMonitorService.cs   # adapter throughput (sticky adapter choice)
     ├── WeatherService.cs          # Open-Meteo + geocoding, custom location, silent failure
+    ├── LmStudioService.cs         # LM Studio: server-log tailing (loaded models / in-flight / prefill-decode tok/s) + port probe
     ├── AutostartService.cs        # autostart: scheduled task / registry dual channel
     └── MonitorHelper.cs           # EnumDisplayMonitors / SetWindowPos P/Invoke (no WinForms)
 ```
