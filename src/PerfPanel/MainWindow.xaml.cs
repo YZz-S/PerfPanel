@@ -26,11 +26,14 @@ public partial class MainWindow : Window
     private readonly MonitorAggregator _agg = new();
     private readonly WeatherService _weather = new();
     private readonly CodingPlanService _codingPlan = new();
+    private readonly LmStudioService _lmStudio = new();
+    private static readonly TimeSpan LmsRotate = TimeSpan.FromSeconds(3);   // 多模型轮播间隔
     private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly HistoryBuffer _cpuHist = new(HistoryCap);
     private readonly HistoryBuffer _gpuHist = new(HistoryCap);
     private readonly HistoryBuffer _netHist = new(HistoryCap);
+    private readonly HistoryBuffer _netUpHist = new(HistoryCap);
     private readonly bool _windowed;
     private readonly PanelOrientation? _cliOrientation;
     private PanelOrientation _orientation = PanelOrientation.Portrait;
@@ -47,6 +50,12 @@ public partial class MainWindow : Window
 
     /// <summary>设置窗口访问面板内部的 Coding Plan 服务。</summary>
     public CodingPlanService CodingPlan => _codingPlan;
+
+    /// <summary>设置窗口访问面板内部的 LM Studio 监控服务。</summary>
+    public LmStudioService LmStudio => _lmStudio;
+
+    /// <summary>设置窗口访问传感器聚合器(GPU 列表与切换)。</summary>
+    public MonitorAggregator Aggregator => _agg;
 
     /// <summary>设置窗口访问便签/待办服务。</summary>
     public NotesService Notes => _notes;
@@ -109,6 +118,7 @@ public partial class MainWindow : Window
         RebuildTodoRows();
         _ = WeatherLoopAsync();
         _ = CodingPlanLoopAsync();
+        _ = LmStudioLoopAsync();
 
         // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
         // 保证开机自启动后面板始终铺满副屏、不被任务栏盖住底部
@@ -174,7 +184,7 @@ public partial class MainWindow : Window
     {
         if (txtCpuName.Text.Length == 0 || txtGpuName.Text.Length == 0) return false;
         var c = Config.Current;
-        if (c.ShowCodingPlan && _codingPlan.AnyKeyConfigured && _codingPlan.Current.Count == 0) return false;
+        if (c.ShowCodingPlan && _codingPlan.AnyVisible && _codingPlan.Current.Count == 0) return false;
         if (c.ShowWeather && _weather.Current == null) return false;
         return true;
     }
@@ -241,7 +251,7 @@ public partial class MainWindow : Window
             t.Visibility = brand.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         if (!c.ShowWeather) cardWeather.Visibility = Visibility.Collapsed;
-        if (!c.ShowCodingPlan) cardCodingPlan.Visibility = Visibility.Collapsed;
+        if (IsLoaded) UpdateCodingPlan();   // 额度/LM Studio 共用一张卡,可见性在 UpdateCodingPlan 里统一决定
         if (!c.ShowNotes) cardNotes.Visibility = Visibility.Collapsed;
         ApplyCardAlpha(c.CardOpacity);
         ApplyBackgroundImage();
@@ -787,7 +797,9 @@ public partial class MainWindow : Window
         txtNetDown.Text = FormatSpeed(s.NetDownBps);
         txtNetUp.Text = FormatSpeed(s.NetUpBps);
         _netHist.Push(s.NetDownBps / 1024f);
+        _netUpHist.Push(s.NetUpBps / 1024f);
         netGraph.Values = _netHist.ToArray();
+        netGraph.Values2 = _netUpHist.ToArray();   // 紫=上传,青=下载(与上下数值同色)
 
         // ---- 天气 ----
         UpdateWeather();
@@ -889,10 +901,21 @@ public partial class MainWindow : Window
             await Dispatcher.InvokeAsync(UpdateCodingPlan);
     }
 
+    /// <summary>设置里切显隐/调顺序后免网络重取,仅按 config 重排并重绘(UI 线程调用)。</summary>
+    public void RefreshPlanDisplay() => UpdateCodingPlan();
+
+    /// <summary>应用 config.GpuIndex 的 GPU 选择(设置窗口切换后调用;越界自动回退)。</summary>
+    public void ApplyGpuSelection()
+    {
+        try { _agg.SelectGpu(Config.Current.GpuIndex); } catch { }
+    }
+
     private void UpdateCodingPlan()
     {
         var c = Config.Current;
-        if (!c.ShowCodingPlan || !_codingPlan.AnyKeyConfigured)
+        bool plan = c.ShowCodingPlan && _codingPlan.AnyVisible;
+        bool lms = c.ShowLmStudio;
+        if (!plan && !lms)
         {
             cardCodingPlan.Visibility = Visibility.Collapsed;
             UpdateLandscapeSpans();
@@ -900,6 +923,14 @@ public partial class MainWindow : Window
         }
         cardCodingPlan.Visibility = Visibility.Visible;
         UpdateLandscapeSpans();
+        txtPlanTitle.Text = plan && lms ? "CODING PLAN · LM STUDIO" : plan ? "CODING PLAN" : "LM STUDIO";
+
+        if (!plan)
+        {
+            txtPlanRefresh.Text = "";
+            planRows.Children.Clear();
+            return;
+        }
 
         if (_codingPlan.Current.Count == 0)
         {
@@ -913,8 +944,10 @@ public partial class MainWindow : Window
 
         planRows.Children.Clear();
         bool compact = _orientation == PanelOrientation.Landscape;
+        // 横屏 + LM Studio 条:每个供应商只保留最紧张窗口的图例,给底部 LM Studio 条让出可视高度
+        bool legendTightestOnly = compact && Config.Current.ShowLmStudio;
         var sections = _codingPlan.Current
-            .Select(p => compact ? BuildCompactPlanSection(p) : (FrameworkElement)BuildPlanSection(p))
+            .Select(p => compact ? BuildCompactPlanSection(p, legendTightestOnly) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
         // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 5 家后图例文本靠截断收窄
@@ -990,8 +1023,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>横屏供应商小节(竖版排列):圆环在上(所有供应商同一行同高,DeepSeek 为常满环显示金额),
-    /// 名称与限额图例在下。</summary>
-    private static FrameworkElement BuildCompactPlanSection(PlanStatus p)
+    /// 名称与限额图例在下。legendTightestOnly = 底部有 LM Studio 条时只画最紧张窗口的图例。</summary>
+    private static FrameworkElement BuildCompactPlanSection(PlanStatus p, bool legendTightestOnly = false)
     {
         var cell = new StackPanel { Margin = new Thickness(0, 0, 10, 0) };
 
@@ -1061,7 +1094,10 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
             });
 
-        foreach (var w in windows)
+        var legendWindows = windows;
+        if (legendTightestOnly && windows.Count > 1)
+            legendWindows = [windows.OrderBy(w => 100 - (w.UsedPercent ?? 0)).First()];
+        foreach (var w in legendWindows)
             cell.Children.Add(BuildCompactLegendLine(w));
         return cell;
     }
@@ -1182,6 +1218,105 @@ public partial class MainWindow : Window
 
     private static Brush BrushFromHex(string hex) =>
         new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+
+    // ---------- LM Studio 监控 ----------
+
+    private async Task LmStudioLoopAsync()
+    {
+        // 启动稍等,避免与天气定位/LHM 初始化抢带宽
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        while (true)
+        {
+            try { await _lmStudio.PollAsync(); } catch { /* 单次轮询失败不终止面板 */ }
+            if (IsLoaded) await Dispatcher.InvokeAsync(UpdateLmStudioCard);
+            await Task.Delay(LmStudioService.PollInterval);
+        }
+    }
+
+    /// <summary>设置里切显隐/改端口后立即重画(卡片可见性与标题在 UpdateCodingPlan 里统一决定)。</summary>
+    public void RefreshLmStudioCard()
+    {
+        UpdateCodingPlan();
+        UpdateLmStudioCard();
+    }
+
+    private void UpdateLmStudioCard()
+    {
+        if (!Config.Current.ShowLmStudio)
+        {
+            rowLmStudio.Visibility = Visibility.Collapsed;
+            return;
+        }
+        rowLmStudio.Visibility = Visibility.Visible;
+        var s = _lmStudio.Current;
+
+        dotLms.Fill = s.Online ? CachedBrush(0x34, 0xD3, 0x99) : CachedBrush(0x55, 0x64, 0x8A);
+        txtLmsInflight.Text = s.TotalInFlight > 0 ? $"并发 {s.TotalInFlight}" : "";
+
+        string state;
+        if (!s.Online) state = "服务未运行";
+        else if (s.TotalInFlight > 0) state = "推理中";
+        else if (s.Models.Count > 0) state = $"已加载 {s.Models.Count} 个模型";
+        else state = s.LogAvailable ? "空闲" : "无服务日志";
+        txtLmsState.Text = state;
+
+        // 多模型加载时轮播:每 3 秒切到下一个模型(按最近活动排序),逐个展示该模型的并发/预填充/速度
+        var list = s.Models;
+        var cur = list.Count > 0 ? list[(int)(DateTime.UtcNow.Ticks / LmsRotate.Ticks) % list.Count] : null;
+        string curLabel = cur is null ? "" : ShortModelId(cur.Id) + (cur.InFlight > 0 ? $" ×{cur.InFlight}" : "");
+
+        // 横屏:模型名放标题行(与额度图例抢高度,速度行保持单行);竖屏:模型名并入速度行
+        bool compactLand = _orientation == PanelOrientation.Landscape;
+        txtLmsModel.Visibility = compactLand && curLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        txtLmsModel.Text = curLabel;
+
+        bool busy = cur is { InFlight: > 0 };
+        double? prefilling = cur is { PrefillProgress: > 0 and < 100 } ? cur.PrefillProgress : null;
+
+        // 速度只认 TpsFreshWindow 内的新数据;推理中沿用该模型最近一次测得值(计时行仅在请求结束时打印,长解码中途无新数据)
+        var nowUtc = DateTime.UtcNow;
+        double? prefillTps = cur?.Tps is { Prefill: { } pf, AtUtc: { } pfAt } && (busy || nowUtc - pfAt <= LmStudioService.TpsFreshWindow) ? pf : null;
+        double? decodeTps = cur?.Tps is { Decode: { } dc, AtUtc: { } dcAt } && (busy || nowUtc - dcAt <= LmStudioService.TpsFreshWindow) ? dc : null;
+
+        txtLmsSpeed.Inlines.Clear();
+        if (curLabel.Length > 0 && !compactLand)
+            AddLmsRun(txtLmsSpeed, curLabel + "  ", "#C9D6EE", FontWeights.Bold);
+        if (prefilling is { } pg)
+            AddLmsRun(txtLmsSpeed, $"prefill {pg:F0}%…", "#FBBF24", FontWeights.Bold);
+        else
+            AddLmsSpeed(txtLmsSpeed, "prefill", prefillTps, "F0");
+        AddLmsRun(txtLmsSpeed, " · ", "#55648A", FontWeights.Normal);
+        AddLmsSpeed(txtLmsSpeed, "decode", decodeTps, "F1");
+        if (curLabel.Length == 0)
+        {
+            txtLmsSpeed.Inlines.Clear();
+            AddLmsRun(txtLmsSpeed, s.Online ? "未加载模型(下次调用时自动加载)" : "启动 LM Studio Server 后自动显示",
+                "#55648A", FontWeights.Normal);
+        }
+    }
+
+    /// <summary>模型标识去供应商前缀:「qwen/qwen3-30b-a3b-2507」→「qwen3-30b-a3b-2507」(无 / 则原样)。</summary>
+    private static string ShortModelId(string id)
+    {
+        int slash = id.LastIndexOf('/');
+        return slash >= 0 && slash < id.Length - 1 ? id[(slash + 1)..] : id;
+    }
+
+    private static void AddLmsSpeed(TextBlock tb, string label, double? tps, string fmt)
+    {
+        AddLmsRun(tb, label + " ", "#55648A", FontWeights.Normal);
+        if (tps is { } v)
+            AddLmsRun(tb, $"{v.ToString(fmt)} tok/s", label == "decode" ? "#22D3EE" : "#FBBF24", FontWeights.Bold);
+        else
+            AddLmsRun(tb, "--", "#55648A", FontWeights.Normal);
+    }
+
+    private static void AddLmsRun(TextBlock tb, string text, string hex, FontWeight weight) =>
+        tb.Inlines.Add(new Run(text)
+        {
+            Foreground = BrushFromHex(hex),
+            FontWeight = weight,
+        });
 
     // ---------- 便签 / 待办 / 专注提醒 ----------
 

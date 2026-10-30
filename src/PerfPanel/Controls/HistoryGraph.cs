@@ -14,9 +14,19 @@ public class HistoryGraph : FrameworkElement
         nameof(Values), typeof(float[]), typeof(HistoryGraph),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>第二条曲线(如上传速率),无面积填充、细线,可选。</summary>
+    public static readonly DependencyProperty Values2Property = DependencyProperty.Register(
+        nameof(Values2), typeof(float[]), typeof(HistoryGraph),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public static readonly DependencyProperty LineColorProperty = DependencyProperty.Register(
         nameof(LineColor), typeof(Color), typeof(HistoryGraph),
         new FrameworkPropertyMetadata(Color.FromRgb(0x22, 0xD3, 0xEE), FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>第二条曲线的颜色(默认紫色,与网络卡 UP 数值同色)。</summary>
+    public static readonly DependencyProperty LineColor2Property = DependencyProperty.Register(
+        nameof(LineColor2), typeof(Color), typeof(HistoryGraph),
+        new FrameworkPropertyMetadata(Color.FromRgb(0xA7, 0x8B, 0xFA), FrameworkPropertyMetadataOptions.AffectsRender));
 
     /// <summary>true 时按数据自适应纵轴,否则用固定的 Min/Max(负载类固定 0-100)。</summary>
     public static readonly DependencyProperty AutoScaleProperty = DependencyProperty.Register(
@@ -29,10 +39,22 @@ public class HistoryGraph : FrameworkElement
         set => SetValue(ValuesProperty, value);
     }
 
+    public float[]? Values2
+    {
+        get => (float[]?)GetValue(Values2Property);
+        set => SetValue(Values2Property, value);
+    }
+
     public Color LineColor
     {
         get => (Color)GetValue(LineColorProperty);
         set => SetValue(LineColorProperty, value);
+    }
+
+    public Color LineColor2
+    {
+        get => (Color)GetValue(LineColor2Property);
+        set => SetValue(LineColor2Property, value);
     }
 
     public bool AutoScale
@@ -61,43 +83,60 @@ public class HistoryGraph : FrameworkElement
             new Point(0, h - 1), new Point(w, h - 1));
 
         var vals = Values;
-        if (vals == null || vals.Length < 2) return;
+        var vals2 = Values2;
+        if ((vals == null || vals.Length < 2) && (vals2 == null || vals2.Length < 2)) return;
 
         double min = Min, max = Max;
         if (AutoScale)
         {
             min = 0;
-            max = Math.Max(vals.Max(), 1f);
-            max *= 1.15; // 顶部留白
+            float peak = 1f;
+            if (vals is { Length: > 0 }) peak = Math.Max(peak, vals.Max());
+            if (vals2 is { Length: > 0 }) peak = Math.Max(peak, vals2.Max());
+            max = peak * 1.15; // 顶部留白
         }
         double range = max - min;
         if (range <= 0) range = 1;
 
+        // 主曲线带面积填充,第二条曲线细线叠加(上传 vs 下载)
+        if (vals is { Length: >= 2 })
+            DrawSeries(dc, vals, w, h, min, range, LineColor, withArea: true, thickness: 1.8, dotR: 2.6);
+        if (vals2 is { Length: >= 2 })
+            DrawSeries(dc, vals2, w, h, min, range, LineColor2, withArea: false, thickness: 1.3, dotR: 2.0);
+    }
+
+    private void DrawSeries(DrawingContext dc, float[] vals, double w, double h,
+        double min, double range, Color color, bool withArea, double thickness, double dotR)
+    {
         double stepX = w / (vals.Length - 1);
         var points = new Point[vals.Length];
         for (int i = 0; i < vals.Length; i++)
         {
-            double v = Math.Clamp(vals[i], min, max);
+            double v = Math.Clamp(vals[i], min, min + range);
             points[i] = new Point(i * stepX, h - (v - min) / range * h);
         }
 
-        // 填充
-        var fillGeo = new StreamGeometry();
-        using (var ctx = fillGeo.Open())
-        {
-            ctx.BeginFigure(points[0], false, false);
-            for (int i = 1; i < points.Length; i++) ctx.LineTo(points[i], true, false);
-            ctx.LineTo(new Point(w, h), true, false);
-            ctx.LineTo(new Point(0, h), true, false);
-        }
-        fillGeo.Freeze();
-        var gradFill = new LinearGradientBrush(
-            Color.FromArgb(0x50, LineColor.R, LineColor.G, LineColor.B),
-            Color.FromArgb(0x00, LineColor.R, LineColor.G, LineColor.B), 90);
-        gradFill.Freeze();
-        dc.DrawGeometry(gradFill, null, fillGeo);
+        var lineBrush = new SolidColorBrush(color);
+        lineBrush.Freeze();
 
-        // 折线
+        if (withArea)
+        {
+            var fillGeo = new StreamGeometry();
+            using (var ctx = fillGeo.Open())
+            {
+                ctx.BeginFigure(points[0], false, false);
+                for (int i = 1; i < points.Length; i++) ctx.LineTo(points[i], true, false);
+                ctx.LineTo(new Point(w, h), true, false);
+                ctx.LineTo(new Point(0, h), true, false);
+            }
+            fillGeo.Freeze();
+            var gradFill = new LinearGradientBrush(
+                Color.FromArgb(0x50, color.R, color.G, color.B),
+                Color.FromArgb(0x00, color.R, color.G, color.B), 90);
+            gradFill.Freeze();
+            dc.DrawGeometry(gradFill, null, fillGeo);
+        }
+
         var lineGeo = new StreamGeometry();
         using (var ctx = lineGeo.Open())
         {
@@ -105,12 +144,9 @@ public class HistoryGraph : FrameworkElement
             for (int i = 1; i < points.Length; i++) ctx.LineTo(points[i], true, false);
         }
         lineGeo.Freeze();
-        var lineBrush = new SolidColorBrush(LineColor);
-        lineBrush.Freeze();
-        dc.DrawGeometry(null, new Pen(lineBrush, 1.8) { LineJoin = PenLineJoin.Round }, lineGeo);
+        dc.DrawGeometry(null, new Pen(lineBrush, thickness) { LineJoin = PenLineJoin.Round }, lineGeo);
 
-        // 末端亮点
         var last = points[^1];
-        dc.DrawEllipse(lineBrush, null, last, 2.6, 2.6);
+        dc.DrawEllipse(lineBrush, null, last, dotR, dotR);
     }
 }

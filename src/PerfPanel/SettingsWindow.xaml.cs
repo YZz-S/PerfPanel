@@ -12,6 +12,10 @@ public partial class SettingsWindow : Window
 {
     private readonly MainWindow _main;
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private string[] _gpuNames = [];       // 下拉当前已填充的 GPU 列表(变化才重建,避免打断选择)
+    private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
+    private SecretField _secAmap = null!, _secDs = null!, _secZp = null!,
+                        _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!, _secOc = null!;
 
     public SettingsWindow(MainWindow main)
     {
@@ -20,7 +24,20 @@ public partial class SettingsWindow : Window
         _main = main;
 
         var c = Config.Current;
-        txtAmapKey.Text = c.AmapKey;
+        _secAmap = new SecretField(txtAmapKey, btnEyeAmap);
+        _secDs = new SecretField(txtDsKey, btnEyeDs);
+        _secZp = new SecretField(txtZpKey, btnEyeZp);
+        _secVolcAk = new SecretField(txtVolcAk, btnEyeVolcAk);
+        _secVolcSk = new SecretField(txtVolcSk, btnEyeVolcSk);
+        _secMimo = new SecretField(txtMimoCookie, btnEyeMimo);
+        _secOc = new SecretField(txtOcKey, btnEyeOc);
+        _secAmap.Init(c.AmapKey);
+        _secDs.Init(c.DeepSeekKey);
+        _secZp.Init(c.ZhipuKey);
+        _secVolcAk.Init(c.VolcAk);
+        _secVolcSk.Init(c.VolcSk);
+        _secMimo.Init(c.MimoCookie);
+        _secOc.Init(c.OpenCodeKey);
         txtCity.Text = c.City;
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
@@ -28,12 +45,8 @@ public partial class SettingsWindow : Window
         chkShowFooter.IsChecked = c.ShowFooter;
         txtBrand.Text = c.BrandText;
         chkShowPlan.IsChecked = c.ShowCodingPlan;
-        txtDsKey.Text = c.DeepSeekKey;
-        txtZpKey.Text = c.ZhipuKey;
-        txtVolcAk.Text = c.VolcAk;
-        txtVolcSk.Text = c.VolcSk;
-        txtMimoCookie.Text = c.MimoCookie;
-        txtOcKey.Text = c.OpenCodeKey;
+        chkShowLmStudio.IsChecked = c.ShowLmStudio;
+        txtLmsPort.Text = c.LmStudioPort.ToString();
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
@@ -121,7 +134,7 @@ public partial class SettingsWindow : Window
 
         btnSaveKey.Click += async (_, _) =>
         {
-            var key = txtAmapKey.Text.Trim();
+            var key = _secAmap.Value.Trim();
             if (key.Length == 0)
             {
                 Config.Current.AmapKey = "";
@@ -197,6 +210,32 @@ public partial class SettingsWindow : Window
 
         chkShowPlan.Checked += (_, _) => { Apply(c => c.ShowCodingPlan = true); _ = _main.RefreshCodingPlanAsync(); };
         chkShowPlan.Unchecked += (_, _) => Apply(c => c.ShowCodingPlan = false);
+
+        chkShowLmStudio.Checked += (_, _) => { Apply(c => c.ShowLmStudio = true); _main.RefreshLmStudioCard(); };
+        chkShowLmStudio.Unchecked += (_, _) => { Apply(c => c.ShowLmStudio = false); _main.RefreshLmStudioCard(); };
+        txtLmsPort.LostFocus += (_, _) =>
+        {
+            if (int.TryParse(txtLmsPort.Text.Trim(), out var p) && p is > 0 and < 65536)
+                Apply(c => c.LmStudioPort = p);
+            else
+                txtLmsPort.Text = Config.Current.LmStudioPort.ToString();
+        };
+
+        // ---- 监控 GPU:LHM 约 1s 后才枚举完,由 2s 状态定时器增量填充下拉 ----
+        cmbGpu.SelectionChanged += (_, _) =>
+        {
+            if (_suppressGpuEvent) return;
+            if (cmbGpu.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var idx))
+            {
+                Config.Current.GpuIndex = idx;   // -1 = 自动
+                Config.Save();
+                _main.ApplyGpuSelection();
+            }
+        };
+        UpdateGpuCombo();
+
+        // ---- 供应商显隐与排序 ----
+        ReloadPlanProviders();
 
         btnDsTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.DeepSeek);
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
@@ -297,10 +336,185 @@ public partial class SettingsWindow : Window
 
         btnClose.Click += (_, _) => Close();
 
-        // 城市定位是异步的,定时刷新状态行
-        _statusTimer.Tick += (_, _) => UpdateCityStatus();
+        // 城市定位是异步的,定时刷新状态行;顺带增量填充 GPU 下拉
+        _statusTimer.Tick += (_, _) => { UpdateCityStatus(); UpdateGpuCombo(); };
         _statusTimer.Start();
         UpdateCityStatus();
+    }
+
+    // ---- 密钥显隐 ----
+
+    /// <summary>可遮罩的密钥输入:真实明文只存在 Value 里(保存/回填用它),框内默认显示等长 ● 串(只读),
+    /// 点右缘眼睛钮临时切明文可编辑、失焦自动回打码。不用 PasswordBox——WPF 的 PasswordBox
+    /// PasswordChar='\0' 时显示空白,根本没有"显示真实文本"的明文模式。</summary>
+    private sealed class SecretField(TextBox box, Button eye)
+    {
+        public string Value = "";
+
+        private bool _reveal;
+
+        public void Init(string value)
+        {
+            Value = value;
+            box.TextChanged += (_, _) => { if (_reveal) Value = box.Text; };  // 只在明文态吸收编辑
+            box.LostFocus += (_, _) => SetReveal(false);
+            eye.Click += (_, _) => SetReveal(!_reveal);
+            SetReveal(false, value);
+        }
+
+        private void SetReveal(bool reveal, string? value = null)
+        {
+            _reveal = reveal;
+            if (value != null) Value = value;
+            box.IsReadOnly = !reveal;
+            box.Text = reveal ? Value : new string('●', Value.Length);
+            if (reveal)
+            {
+                box.Focus();
+                box.CaretIndex = box.Text.Length;
+            }
+            eye.Content = reveal ? "🙈" : "👁";
+            eye.ToolTip = reveal ? "点击隐藏密钥" : "点击显示密钥";
+        }
+    }
+
+    // ---- 监控 GPU ----
+
+    /// <summary>LHM 就绪后填充 GPU 下拉;列表未变化时不重建(避免打断正在展开的选择)。</summary>
+    private void UpdateGpuCombo()
+    {
+        if (!_main.Aggregator.Ready) return;   // 初始化中:保留 XAML 里的"初始化中…"占位
+        var names = _main.Aggregator.GpuNames;
+        if (names.Count == _gpuNames.Length && names.SequenceEqual(_gpuNames)) return;
+        _gpuNames = names.ToArray();
+
+        _suppressGpuEvent = true;
+        int sel = Config.Current.GpuIndex;
+        cmbGpu.Items.Clear();
+        cmbGpu.Items.Add(new ComboBoxItem
+        {
+            Content = names.Count > 1 ? "自动(优先有温度的独显)" : "自动",
+            Tag = "-1",
+        });
+        for (int i = 0; i < names.Count; i++)
+            cmbGpu.Items.Add(new ComboBoxItem { Content = names[i], Tag = i.ToString() });
+        cmbGpu.SelectedIndex = sel >= 0 && sel < names.Count ? sel + 1 : 0;
+        _suppressGpuEvent = false;
+
+        if (names.Count == 0)
+        {
+            lblGpuStatus.Text = _main.Aggregator.FullMode
+                ? "未检测到 GPU 传感器"
+                : "传感器不可用(BASIC 模式,以管理员运行可解锁),无法切换 GPU";
+            cmbGpu.IsEnabled = false;
+        }
+        else
+        {
+            lblGpuStatus.Text = names.Count == 1
+                ? $"检测到 1 块 GPU:{names[0]}"
+                : $"检测到 {names.Count} 块 GPU,当前:{(sel >= 0 && sel < names.Count ? names[sel] : "自动")}";
+            cmbGpu.IsEnabled = names.Count > 1;
+        }
+    }
+
+    // ---- Coding Plan 供应商显隐与排序 ----
+
+    /// <summary>当前生效顺序:config.PlanOrder 里列出的在前,未列出的按默认顺序排后(含隐藏项,便于恢复显示)。</summary>
+    private static string[] EffectivePlanOrder()
+    {
+        var names = CodingPlanService.ProviderNames;
+        var order = Config.Current.PlanOrder.Where(names.Contains).ToList();
+        order.AddRange(names.Except(order));
+        return order.ToArray();
+    }
+
+    /// <summary>重建供应商行:名称 | 显示勾选 | ↑↓ 移动。</summary>
+    private void ReloadPlanProviders()
+    {
+        planProviders.Children.Clear();
+        var order = EffectivePlanOrder();
+        for (int i = 0; i < order.Length; i++)
+        {
+            string name = order[i];
+            bool visible = CodingPlanService.IsVisible(name);
+
+            var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var label = new TextBlock
+            {
+                Text = name + (visible ? "" : "(已隐藏)"),
+                FontSize = 13,
+                Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(visible ? (byte)0xC9 : (byte)0x55, visible ? (byte)0xD6 : (byte)0x64, visible ? (byte)0xEE : (byte)0x8A)),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            row.Children.Add(label);
+
+            var chk = new CheckBox
+            {
+                Content = "显示",
+                FontSize = 12,
+                IsChecked = visible,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 4, 0),
+            };
+            chk.Checked += (_, _) => SetPlanVisible(name, true);
+            chk.Unchecked += (_, _) => SetPlanVisible(name, false);
+            Grid.SetColumn(chk, 1);
+            row.Children.Add(chk);
+
+            var btnUp = new Button
+            {
+                Content = "↑", Style = (Style)Resources["BtnStyle"], FontSize = 12,
+                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(4, 0, 0, 0),
+                IsEnabled = i > 0, ToolTip = "上移",
+            };
+            btnUp.Click += (_, _) => MovePlanProvider(name, -1);
+            Grid.SetColumn(btnUp, 2);
+            row.Children.Add(btnUp);
+
+            var btnDown = new Button
+            {
+                Content = "↓", Style = (Style)Resources["BtnStyle"], FontSize = 12,
+                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(4, 0, 0, 0),
+                IsEnabled = i < order.Length - 1, ToolTip = "下移",
+            };
+            btnDown.Click += (_, _) => MovePlanProvider(name, +1);
+            Grid.SetColumn(btnDown, 3);
+            row.Children.Add(btnDown);
+
+            planProviders.Children.Add(row);
+        }
+    }
+
+    private void SetPlanVisible(string name, bool visible)
+    {
+        var hidden = Config.Current.PlanHidden;
+        if (visible) hidden.Remove(name);
+        else if (!hidden.Contains(name)) hidden.Add(name);
+        Config.Save();
+        _main.CodingPlan.RefilterCurrent();
+        _main.RefreshPlanDisplay();
+        ReloadPlanProviders();
+    }
+
+    private void MovePlanProvider(string name, int delta)
+    {
+        var order = EffectivePlanOrder().ToList();
+        int i = order.IndexOf(name);
+        int j = i + delta;
+        if (i < 0 || j < 0 || j >= order.Count) return;
+        (order[i], order[j]) = (order[j], order[i]);
+        Config.Current.PlanOrder = order;   // 全量写回,序列化后的顺序稳定
+        Config.Save();
+        _main.CodingPlan.RefilterCurrent();
+        _main.RefreshPlanDisplay();
+        ReloadPlanProviders();
     }
 
     private void Apply(Action<AppConfig> change)
@@ -347,11 +561,11 @@ public partial class SettingsWindow : Window
         Button btn;
         switch (kind)
         {
-            case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
-            case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
-            case PlanKind.Mimo: key = txtMimoCookie.Text.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
-            case PlanKind.OpenCode: key = txtOcKey.Text.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
-            default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
+            case PlanKind.DeepSeek: key = _secDs.Value.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
+            case PlanKind.Zhipu: key = _secZp.Value.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
+            case PlanKind.Mimo: key = _secMimo.Value.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
+            case PlanKind.OpenCode: key = _secOc.Value.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
+            default: ak = _secVolcAk.Value.Trim(); sk = _secVolcSk.Value.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
 
@@ -537,18 +751,39 @@ public partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>按窗口所在屏幕的工作区收口尺寸:小屏(如 1920×440 副屏)下不超出屏幕,超出部分页内滚动。
+    /// <summary>窗口初始定位与尺寸收口:带 Owner 打开时会落在主面板所在屏(典型为 440 宽竖屏副屏),
+    /// 工作区面积比最大屏小 40% 以上时迁去最大屏居中(设置是弹窗,放主屏更好用);不迁移则留在当前屏。
+    /// 定位后按所在显示器工作区收口尺寸(超出部分随窗口缩小,超不过下限就页内滚动补偿)。
     /// 挂在 Loaded 而非 SourceInitialized:此时 CenterScreen 定位已完成,MonitorFromWindow 才能判对显示器。</summary>
     private void FitToScreen(object sender, RoutedEventArgs e)
     {
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
+            var cur = MonitorHelper.MonitorForWindow(hwnd);
+            if (cur is { } here)
+            {
+                var largest = MonitorHelper.GetAll().OrderByDescending(m => m.WorkArea).First();
+                if (largest.WorkArea > here.WorkArea * 5 / 3)   // 所在屏工作区不到最大屏六成 → 迁移
+                {
+                    double dpi = MonitorHelper.GetDpiForWindow(hwnd);
+                    if (dpi <= 0) dpi = 96;
+                    // 物理像素收口(设计尺寸 660×980 DIP)。混合 DPI 下另屏 DPI 差异造成的偏差,
+                    // 由下方按当前屏工作区的 DIP 收口兜底
+                    double wPhys = Math.Min(660 * dpi / 96, largest.WorkWidth - 40);
+                    double hPhys = Math.Min(980 * dpi / 96, largest.WorkHeight - 40);
+                    int x = largest.WorkLeft + (largest.WorkWidth - (int)wPhys) / 2;
+                    int y = largest.WorkTop + (largest.WorkHeight - (int)hPhys) / 2;
+                    MonitorHelper.SetWindowPos(hwnd, new IntPtr(-1),
+                        x, y, (int)wPhys, (int)hPhys, 0x0004 /*SWP_NOZORDER*/);
+                }
+            }
+
             var area = MonitorHelper.GetWorkAreaDip(hwnd);
             if (area is { } a)
             {
-                if (Height > a.Height - 24) Height = Math.Max(420, a.Height - 24);
-                if (Width > a.Width - 24) Width = Math.Max(460, a.Width - 24);
+                if (Height > a.Height - 24) Height = Math.Max(380, a.Height - 24);
+                if (Width > a.Width - 24) Width = Math.Max(420, a.Width - 24);
             }
         }
         catch { /* 屏幕信息取不到时保持默认尺寸 */ }

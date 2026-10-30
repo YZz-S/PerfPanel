@@ -33,8 +33,18 @@ public sealed class CodingPlanService
 {
     public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(15);
 
+    /// <summary>全部已知供应商(PlanStatus.Name 口径),同时是默认显示顺序。</summary>
+    public static readonly string[] ProviderNames = ["DeepSeek", "GLM", "MiMo", "火山方舟", "OpenCode Go"];
+
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private readonly Dictionary<string, PlanStatus> _last = [];
+    private readonly object _gate = new();   // _last/Current 的读写锁:设置线程重排 vs 后台刷新并发
+
+    /// <summary>某供应商是否显示(config.PlanHidden 之外即显示)。</summary>
+    public static bool IsVisible(string name) => !Config.Current.PlanHidden.Contains(name);
+
+    /// <summary>有 Key 且至少一个供应商未隐藏(全隐藏时主面板收起整卡)。</summary>
+    public bool AnyVisible => AnyKeyConfigured && ProviderNames.Any(IsVisible);
 
     public IReadOnlyList<PlanStatus> Current { get; private set; } = [];
     public DateTime LastRefreshUtc { get; private set; }
@@ -66,14 +76,39 @@ public sealed class CodingPlanService
         if (queries.Count > 0)
         {
             var results = await Task.WhenAll(queries);
-            Current = results.Select(Merge).ToList();
-            LastRefreshUtc = DateTime.UtcNow;
+            lock (_gate)
+            {
+                foreach (var r in results) Merge(r);   // 全量进缓存,展示层再按显隐/顺序裁剪
+                RefilterCurrent();
+                LastRefreshUtc = DateTime.UtcNow;
+            }
         }
         else
         {
             Current = [];
         }
         return Current;
+    }
+
+    /// <summary>按 config 的隐藏/顺序重排 Current(设置里切显隐/调顺序后免网络重取即时生效)。</summary>
+    public void RefilterCurrent()
+    {
+        lock (_gate)
+        {
+            var c = Config.Current;
+            Current = _last.Values
+                .Where(p => !c.PlanHidden.Contains(p.Name))
+                .OrderBy(p => OrderRank(c.PlanOrder, p.Name))
+                .ThenBy(p => Array.IndexOf(ProviderNames, p.Name))
+                .ToList();
+        }
+    }
+
+    /// <summary>在 config.PlanOrder 里的位次;未列出的排 int.MaxValue(由 ThenBy 的默认顺序兜底)。</summary>
+    private static int OrderRank(List<string> order, string name)
+    {
+        int i = order.IndexOf(name);
+        return i >= 0 ? i : int.MaxValue;
     }
 
     /// <summary>成功覆盖缓存;失败保留旧快照并附 StaleError,无旧快照才透出错误。</summary>

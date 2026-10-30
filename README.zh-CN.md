@@ -24,6 +24,7 @@
 - **网络**:实时上/下行速度 + 下行历史曲线,自动选择活动网卡
 - **天气**:Open-Meteo 免费国际源(无需 key;可填高德 Key 切换国内稳定源),自动 IP 定位(可手动改 `weather.json`)
 - **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)、OpenCode Go(5h/周/月用量)剩余额度与重置倒计时
+- **LM Studio 监控**:额度卡底部的 LM STUDIO 条实时显示本机 LM Studio 是否在线、加载了哪些模型、当前几个请求在跑,以及 prefill(prompt eval)/ decode(eval)速度(tok/s)——只显示 3 秒内的新数据,推理中沿用最近一次测得值(计时行仅在请求结束时打印);多模型加载时每 3 秒轮播一个模型,逐个展示各自的在飞数/预填充/速度——数据解析自 LM Studio 自身的服务日志,无需 API Token(新版 REST 接口要求 Bearer token 且明文不落盘)
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
 - **自定义标题**:左上角 PERF PANEL 文字可在设置(S)→「界面」改成任意内容/emoji,输入即生效,留空 = 隐藏
 - **背景自定义**:设置(S)→「界面」选一张本地图片作面板背景(支持 png/jpg/bmp/gif,自动复制到 exe 旁随程序走,源图移动/删除不影响),「背景图不透明度」与「卡片不透明度」两根滑杆即时可调——卡片调低后背景透出,文字仍保持不透明;未设置时维持默认深色底
@@ -115,7 +116,20 @@ PerfPanel.exe --set-city 上海
 
 各项均「保存并测试」即时验证;留空 = 面板不查询该项。密钥保存在 exe 旁 `config.json`。
 
+**密钥打码**:所有密钥/Cookie 输入框(高德 Key 亦然)默认以 `●●●●` 打码且只读,点右侧 👁 图标临时显示明文并变为可编辑、失焦或再点眼睛恢复打码——修改/粘贴需先点开眼睛,读取与保存的始终是真实明文,不影响「保存并测试」。
+
+**设置窗自适应**:带 Owner 打开时原本会挤在面板所在的副屏(如 440×1920 竖屏)只剩 ~460px 宽,现在所在屏工作区小于最大屏六成时自动迁到**最大屏居中**;窗口可拖拽调大小,输入框与下拉在窄窗下自适应收窄(细滚动条,说明文字自动换行)。
+
 > 智谱/火山/MiMo 为非官方接口(参考 CC Switch / CodexBar 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。火山最近一次查询的原始响应会保存在 exe 旁 `volc-last-response.json`,字段缺失/变动时可据此核对。
+
+## LM Studio 监控
+
+额度卡底部的 `LM STUDIO` 条(2 秒刷新;开关与端口在 设置 →「Coding Plan 额度」→ LM Studio 本地推理)。数据来自两个本机来源,全程不需要 API Token:
+
+- **在线判定**:TCP 探测服务端口(默认 `1234`,即 LM Studio 开发者页 → Server 的端口)
+- **其余全部**:LM Studio 服务日志 `%USERPROFILE%\.lmstudio\server-logs`。「Running chat completion」+1 与「Finished streaming response」/「Generated prediction」−1 配平得到各模型在飞请求数;引擎 `print_timing` 行给出 prefill(prompt eval)与 decode(eval)速度,值随日志时间戳记录、过期即不显示,并归属给下一个完成事件的模型(计时行只带槽位号不带模型名——单模型工作时精确,多模型高并发偶有归属偏差);流式请求的逐 token「Accumulated N tokens」行(自带模型名、归属精确)按秒聚合出实时 decode 速度,数字逐秒变动;周期性 `n_gen … tg_3s` 计时行与请求结束值兜底;「Unloading model … due to TTL」立即把模型移出加载集
+
+显示状态:服务未运行 / 推理中(右侧 `并发 N` 为在飞请求数)/ 已加载 N 个模型 / 空闲。日志里拿不到权威的已加载清单(要 token),因此「已加载」口径 = 当前在飞或 JIT 卸载 TTL 窗口内(默认 5 分钟)有活动。横屏下供应商图例只保留各家的最紧张窗口,给 LM Studio 条让出可视高度;竖屏保留全部行。
 
 ## 便签 / 待办 / 专注提醒
 
@@ -134,7 +148,7 @@ FOCUS 卡片(横屏为横跨左半的大卡片)帮你把副屏变成专注看板
 # 需 .NET 8 SDK
 dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
-# 产物: src/PerfPanel/bin/Release/net8.0-windows/win-x64/publish/PerfPanel.exe(单文件,约 3.7MB)
+# 产物: src/PerfPanel/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/PerfPanel.exe(单文件,约 29MB)
 ```
 
 自包含版(免装运行时,约 150MB):
@@ -160,6 +174,7 @@ src/PerfPanel/
     ├── MonitorAggregator.cs       # 双源聚合,字段级互补
     ├── NetworkMonitorService.cs   # 网卡吞吐(粘性选卡)
     ├── WeatherService.cs          # Open-Meteo + 地理编码,位置可自定义,失败静默
+    ├── LmStudioService.cs         # LM Studio:服务日志尾读(加载模型/并发/prefill·decode 速度)+ 端口探测
     ├── AutostartService.cs        # 开机自启:计划任务/注册表双通道
     └── MonitorHelper.cs           # EnumDisplayMonitors / SetWindowPos P/Invoke(不引 WinForms)
 ```
