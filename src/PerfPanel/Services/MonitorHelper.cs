@@ -5,7 +5,12 @@ namespace PerfPanel.Services;
 /// <summary>多显示器枚举(user32 P/Invoke,避免为 Screen.AllScreens 引入整个 WinForms)。</summary>
 internal static class MonitorHelper
 {
-    public sealed record MonitorBounds(int Left, int Top, int Width, int Height, bool Primary);
+    /// <summary>显示器边界:全屏 rcMonitor + 工作区 rcWork(任务栏/停靠栏之外),均为该屏虚拟桌面物理像素,Left/Top 是屏在桌面中的偏移。</summary>
+    public sealed record MonitorBounds(int Left, int Top, int Width, int Height, bool Primary,
+                                       int WorkLeft, int WorkTop, int WorkWidth, int WorkHeight)
+    {
+        public long WorkArea => (long)WorkWidth * WorkHeight;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
@@ -40,7 +45,7 @@ internal static class MonitorHelper
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
     [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 
     /// <summary>取 hwnd 所在显示器的工作区(去任务栏),换算为 DIP(WPF 单位)。
     /// 混合 DPI 下物理像素与 DIP 不可直接混用,这里按该窗口实际 DPI 归一。</summary>
@@ -57,6 +62,21 @@ internal static class MonitorHelper
                 (mi.rcWork.Bottom - mi.rcWork.Top) * 96.0 / dpi);
     }
 
+    /// <summary>hwnd 所在显示器(全屏物理边界与工作区),找不到时 null。</summary>
+    public static MonitorBounds? MonitorForWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return null;
+        var m = MonitorFromWindow(hwnd, 2 /*MONITOR_DEFAULTTONEAREST*/);
+        if (m == IntPtr.Zero) return null;
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(m, ref mi)) return null;
+        var rc = mi.rcMonitor;
+        var w = mi.rcWork;
+        return new MonitorBounds(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top,
+            (mi.dwFlags & 1) != 0,
+            w.Left, w.Top, w.Right - w.Left, w.Bottom - w.Top);
+    }
+
     public static List<MonitorBounds> GetAll()
     {
         var list = new List<MonitorBounds>();
@@ -67,7 +87,9 @@ internal static class MonitorHelper
             {
                 bool primary = (mi.dwFlags & 1) != 0; // MONITORINFOF_PRIMARY
                 var rc = mi.rcMonitor;
-                list.Add(new MonitorBounds(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, primary));
+                var wk = mi.rcWork;
+                list.Add(new MonitorBounds(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, primary,
+                    wk.Left, wk.Top, wk.Right - wk.Left, wk.Bottom - wk.Top));
             }
             return true;
         }, IntPtr.Zero);

@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly WeatherService _weather = new();
     private readonly CodingPlanService _codingPlan = new();
     private readonly LmStudioService _lmStudio = new();
+    private static readonly TimeSpan LmsRotate = TimeSpan.FromSeconds(3);   // 多模型轮播间隔
     private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly HistoryBuffer _cpuHist = new(HistoryCap);
@@ -1259,29 +1260,34 @@ public partial class MainWindow : Window
         else state = s.LogAvailable ? "空闲" : "无服务日志";
         txtLmsState.Text = state;
 
-        string models = s.Models.Count == 0 ? ""
-            : string.Join(" · ", s.Models.Take(2).Select(m => ShortModelId(m.Id))) + (s.Models.Count > 2 ? $" · +{s.Models.Count - 2}" : "");
+        // 多模型加载时轮播:每 3 秒切到下一个模型(按最近活动排序),逐个展示该模型的并发/预填充/速度
+        var list = s.Models;
+        var cur = list.Count > 0 ? list[(int)(DateTime.UtcNow.Ticks / LmsRotate.Ticks) % list.Count] : null;
+        string curLabel = cur is null ? "" : ShortModelId(cur.Id) + (cur.InFlight > 0 ? $" ×{cur.InFlight}" : "");
 
         // 横屏:模型名放标题行(与额度图例抢高度,速度行保持单行);竖屏:模型名并入速度行
         bool compactLand = _orientation == PanelOrientation.Landscape;
-        txtLmsModel.Visibility = compactLand && models.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        txtLmsModel.Text = models;
+        txtLmsModel.Visibility = compactLand && curLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        txtLmsModel.Text = curLabel;
 
-        var prefilling = s.Models.Select(m => m.PrefillProgress).FirstOrDefault(p => p is > 0 and < 100);
-        bool busy = s.TotalInFlight > 0;
+        bool busy = cur is { InFlight: > 0 };
+        double? prefilling = cur is { PrefillProgress: > 0 and < 100 } ? cur.PrefillProgress : null;
+
+        // 速度只认 TpsFreshWindow 内的新数据;推理中沿用该模型最近一次测得值(计时行仅在请求结束时打印,长解码中途无新数据)
+        var nowUtc = DateTime.UtcNow;
+        double? prefillTps = cur?.Tps is { Prefill: { } pf, AtUtc: { } pfAt } && (busy || nowUtc - pfAt <= LmStudioService.TpsFreshWindow) ? pf : null;
+        double? decodeTps = cur?.Tps is { Decode: { } dc, AtUtc: { } dcAt } && (busy || nowUtc - dcAt <= LmStudioService.TpsFreshWindow) ? dc : null;
 
         txtLmsSpeed.Inlines.Clear();
-        if (models.Length > 0 && !compactLand)
-            AddLmsRun(txtLmsSpeed, models + "  ", "#C9D6EE", FontWeights.Bold);
+        if (curLabel.Length > 0 && !compactLand)
+            AddLmsRun(txtLmsSpeed, curLabel + "  ", "#C9D6EE", FontWeights.Bold);
         if (prefilling is { } pg)
             AddLmsRun(txtLmsSpeed, $"prefill {pg:F0}%…", "#FBBF24", FontWeights.Bold);
         else
-            AddLmsSpeed(txtLmsSpeed, "prefill", s.LastPrefillTps, "F0");
+            AddLmsSpeed(txtLmsSpeed, "prefill", prefillTps, "F0");
         AddLmsRun(txtLmsSpeed, " · ", "#55648A", FontWeights.Normal);
-        AddLmsSpeed(txtLmsSpeed, "decode", s.LastDecodeTps, "F1");
-        if (!busy && s.LastEventUtc > DateTime.MinValue && (DateTime.UtcNow - s.LastEventUtc).TotalMinutes >= 2)
-            AddLmsRun(txtLmsSpeed, "  (上次推理)", "#55648A", FontWeights.Normal);
-        if (models.Length == 0 && prefilling == null && s.LastPrefillTps == null && s.LastDecodeTps == null)
+        AddLmsSpeed(txtLmsSpeed, "decode", decodeTps, "F1");
+        if (curLabel.Length == 0)
         {
             txtLmsSpeed.Inlines.Clear();
             AddLmsRun(txtLmsSpeed, s.Online ? "未加载模型(下次调用时自动加载)" : "启动 LM Studio Server 后自动显示",

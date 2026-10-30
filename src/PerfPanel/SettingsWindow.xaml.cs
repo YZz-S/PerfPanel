@@ -14,6 +14,8 @@ public partial class SettingsWindow : Window
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private string[] _gpuNames = [];       // 下拉当前已填充的 GPU 列表(变化才重建,避免打断选择)
     private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
+    private SecretField _secAmap = null!, _secDs = null!, _secZp = null!,
+                        _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!, _secOc = null!;
 
     public SettingsWindow(MainWindow main)
     {
@@ -22,7 +24,20 @@ public partial class SettingsWindow : Window
         _main = main;
 
         var c = Config.Current;
-        txtAmapKey.Text = c.AmapKey;
+        _secAmap = new SecretField(txtAmapKey, btnEyeAmap);
+        _secDs = new SecretField(txtDsKey, btnEyeDs);
+        _secZp = new SecretField(txtZpKey, btnEyeZp);
+        _secVolcAk = new SecretField(txtVolcAk, btnEyeVolcAk);
+        _secVolcSk = new SecretField(txtVolcSk, btnEyeVolcSk);
+        _secMimo = new SecretField(txtMimoCookie, btnEyeMimo);
+        _secOc = new SecretField(txtOcKey, btnEyeOc);
+        _secAmap.Init(c.AmapKey);
+        _secDs.Init(c.DeepSeekKey);
+        _secZp.Init(c.ZhipuKey);
+        _secVolcAk.Init(c.VolcAk);
+        _secVolcSk.Init(c.VolcSk);
+        _secMimo.Init(c.MimoCookie);
+        _secOc.Init(c.OpenCodeKey);
         txtCity.Text = c.City;
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
@@ -30,12 +45,6 @@ public partial class SettingsWindow : Window
         chkShowFooter.IsChecked = c.ShowFooter;
         txtBrand.Text = c.BrandText;
         chkShowPlan.IsChecked = c.ShowCodingPlan;
-        txtDsKey.Text = c.DeepSeekKey;
-        txtZpKey.Text = c.ZhipuKey;
-        txtVolcAk.Text = c.VolcAk;
-        txtVolcSk.Text = c.VolcSk;
-        txtMimoCookie.Text = c.MimoCookie;
-        txtOcKey.Text = c.OpenCodeKey;
         chkShowLmStudio.IsChecked = c.ShowLmStudio;
         txtLmsPort.Text = c.LmStudioPort.ToString();
         SelectOrientation(c.Orientation);
@@ -125,7 +134,7 @@ public partial class SettingsWindow : Window
 
         btnSaveKey.Click += async (_, _) =>
         {
-            var key = txtAmapKey.Text.Trim();
+            var key = _secAmap.Value.Trim();
             if (key.Length == 0)
             {
                 Config.Current.AmapKey = "";
@@ -333,6 +342,42 @@ public partial class SettingsWindow : Window
         UpdateCityStatus();
     }
 
+    // ---- 密钥显隐 ----
+
+    /// <summary>可遮罩的密钥输入:真实明文只存在 Value 里(保存/回填用它),框内默认显示等长 ● 串(只读),
+    /// 点右缘眼睛钮临时切明文可编辑、失焦自动回打码。不用 PasswordBox——WPF 的 PasswordBox
+    /// PasswordChar='\0' 时显示空白,根本没有"显示真实文本"的明文模式。</summary>
+    private sealed class SecretField(TextBox box, Button eye)
+    {
+        public string Value = "";
+
+        private bool _reveal;
+
+        public void Init(string value)
+        {
+            Value = value;
+            box.TextChanged += (_, _) => { if (_reveal) Value = box.Text; };  // 只在明文态吸收编辑
+            box.LostFocus += (_, _) => SetReveal(false);
+            eye.Click += (_, _) => SetReveal(!_reveal);
+            SetReveal(false, value);
+        }
+
+        private void SetReveal(bool reveal, string? value = null)
+        {
+            _reveal = reveal;
+            if (value != null) Value = value;
+            box.IsReadOnly = !reveal;
+            box.Text = reveal ? Value : new string('●', Value.Length);
+            if (reveal)
+            {
+                box.Focus();
+                box.CaretIndex = box.Text.Length;
+            }
+            eye.Content = reveal ? "🙈" : "👁";
+            eye.ToolTip = reveal ? "点击隐藏密钥" : "点击显示密钥";
+        }
+    }
+
     // ---- 监控 GPU ----
 
     /// <summary>LHM 就绪后填充 GPU 下拉;列表未变化时不重建(避免打断正在展开的选择)。</summary>
@@ -516,11 +561,11 @@ public partial class SettingsWindow : Window
         Button btn;
         switch (kind)
         {
-            case PlanKind.DeepSeek: key = txtDsKey.Text.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
-            case PlanKind.Zhipu: key = txtZpKey.Text.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
-            case PlanKind.Mimo: key = txtMimoCookie.Text.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
-            case PlanKind.OpenCode: key = txtOcKey.Text.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
-            default: ak = txtVolcAk.Text.Trim(); sk = txtVolcSk.Text.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
+            case PlanKind.DeepSeek: key = _secDs.Value.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
+            case PlanKind.Zhipu: key = _secZp.Value.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
+            case PlanKind.Mimo: key = _secMimo.Value.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
+            case PlanKind.OpenCode: key = _secOc.Value.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
+            default: ak = _secVolcAk.Value.Trim(); sk = _secVolcSk.Value.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
 
@@ -706,18 +751,39 @@ public partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>按窗口所在屏幕的工作区收口尺寸:小屏(如 1920×440 副屏)下不超出屏幕,超出部分页内滚动。
+    /// <summary>窗口初始定位与尺寸收口:带 Owner 打开时会落在主面板所在屏(典型为 440 宽竖屏副屏),
+    /// 工作区面积比最大屏小 40% 以上时迁去最大屏居中(设置是弹窗,放主屏更好用);不迁移则留在当前屏。
+    /// 定位后按所在显示器工作区收口尺寸(超出部分随窗口缩小,超不过下限就页内滚动补偿)。
     /// 挂在 Loaded 而非 SourceInitialized:此时 CenterScreen 定位已完成,MonitorFromWindow 才能判对显示器。</summary>
     private void FitToScreen(object sender, RoutedEventArgs e)
     {
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
+            var cur = MonitorHelper.MonitorForWindow(hwnd);
+            if (cur is { } here)
+            {
+                var largest = MonitorHelper.GetAll().OrderByDescending(m => m.WorkArea).First();
+                if (largest.WorkArea > here.WorkArea * 5 / 3)   // 所在屏工作区不到最大屏六成 → 迁移
+                {
+                    double dpi = MonitorHelper.GetDpiForWindow(hwnd);
+                    if (dpi <= 0) dpi = 96;
+                    // 物理像素收口(设计尺寸 660×980 DIP)。混合 DPI 下另屏 DPI 差异造成的偏差,
+                    // 由下方按当前屏工作区的 DIP 收口兜底
+                    double wPhys = Math.Min(660 * dpi / 96, largest.WorkWidth - 40);
+                    double hPhys = Math.Min(980 * dpi / 96, largest.WorkHeight - 40);
+                    int x = largest.WorkLeft + (largest.WorkWidth - (int)wPhys) / 2;
+                    int y = largest.WorkTop + (largest.WorkHeight - (int)hPhys) / 2;
+                    MonitorHelper.SetWindowPos(hwnd, new IntPtr(-1),
+                        x, y, (int)wPhys, (int)hPhys, 0x0004 /*SWP_NOZORDER*/);
+                }
+            }
+
             var area = MonitorHelper.GetWorkAreaDip(hwnd);
             if (area is { } a)
             {
-                if (Height > a.Height - 24) Height = Math.Max(420, a.Height - 24);
-                if (Width > a.Width - 24) Width = Math.Max(460, a.Width - 24);
+                if (Height > a.Height - 24) Height = Math.Max(380, a.Height - 24);
+                if (Width > a.Width - 24) Width = Math.Max(420, a.Width - 24);
             }
         }
         catch { /* 屏幕信息取不到时保持默认尺寸 */ }
