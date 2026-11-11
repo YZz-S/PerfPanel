@@ -26,7 +26,7 @@ public sealed class HardwareMonitorService : IDisposable
         IsMemoryEnabled = true,
         IsMotherboardEnabled = true,
         IsControllerEnabled = false,
-        IsStorageEnabled = false,
+        IsStorageEnabled = true,     // 存储 SMART:磁盘温度(管理员;枚举失败仅丢温度,不影响其他传感器)
         IsNetworkEnabled = false,
     };
     private readonly UpdateVisitor _visitor = new();
@@ -44,6 +44,10 @@ public sealed class HardwareMonitorService : IDisposable
     public string CpuName { get; private set; } = "";
     public string GpuName { get; private set; } = "";
     public float RamTotalGb { get; private set; }
+
+    /// <summary>物理盘 SMART 温度(模型名 → 温度;LHM 枚举不到/无传感器时温度为 null),
+    /// 供磁盘卡按 卷↔物理盘 映射标注到分区行。</summary>
+    public readonly List<(string Model, float? TempC)> StorageTemps = new();
 
     /// <summary>LHM 枚举到的全部 GPU 名称(设置窗口下拉数据源)。</summary>
     public IReadOnlyList<string> GpuNames => _gpus.Select(g => g.Name).ToList();
@@ -318,6 +322,24 @@ public sealed class HardwareMonitorService : IDisposable
             snap.RamUsedGb = _ramUsedGb!.Value!.Value;
         if (RamTotalGb > 0)
             snap.RamTotalGb = RamTotalGb;
+
+        // 存储温度:SMART 随全量遍历一起刷新;多温度传感器(NVMe Composite 等)优先 Composite,其次首个 >0
+        StorageTemps.Clear();
+        try
+        {
+            foreach (var hw in _computer.Hardware)
+            {
+                if (hw.HardwareType != HardwareType.Storage) continue;
+                float? temp = hw.Sensors
+                    .Where(s => s.SensorType == SensorType.Temperature && s.Value is > 0)
+                    .OrderByDescending(s => s.Name.Equals("Composite", StringComparison.OrdinalIgnoreCase))
+                    .ThenBy(s => s.Index)
+                    .Select(s => s.Value)
+                    .FirstOrDefault();
+                StorageTemps.Add((hw.Name, temp));
+            }
+        }
+        catch { }
     }
 
     /// <summary>温度/功耗物理上不可能为 0,LHM 无管理员时常返回 0,统一清洗为 null。</summary>

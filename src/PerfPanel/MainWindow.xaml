@@ -202,6 +202,18 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 磁盘:固定分区用量条 + 物理盘 SMART 温度(仅竖屏;横屏磁贴区放不下整列磁盘) -->
+                        <Border x:Name="cardStorage" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="STORAGE" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock x:Name="txtStorageNote" Text="" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               FontSize="11" Foreground="#55648A" FontFamily="Consolas"/>
+                                </Grid>
+                                <StackPanel x:Name="storageRows" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- 网络 -->
                         <Border x:Name="cardNetwork" Style="{StaticResource CardStyle}">
                             <Grid>

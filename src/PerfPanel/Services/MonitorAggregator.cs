@@ -9,6 +9,7 @@ public sealed class MonitorAggregator : IDisposable
     private readonly HardwareMonitorService _lhm = new();
     private readonly FallbackMonitorService _fallback = new();
     private readonly NetworkMonitorService _net = new();
+    private readonly DiskMonitorService _disk = new();
     private readonly object _lock = new();
 
     public bool FullMode => _lhm.IsAvailable;
@@ -75,6 +76,9 @@ public sealed class MonitorAggregator : IDisposable
         snap.NetDownBps = down;
         snap.NetUpBps = up;
         snap.NetInterface = name;
+
+        // 磁盘分区(LHM 可用时带 SMART 温度;WMI 容量免管理员)
+        snap.DiskVolumes = _disk.Sample(_lhm.IsAvailable ? _lhm : null);
 
         if (!_lhm.IsAvailable)
             snap.SourceNote = "BASIC MODE · 以管理员运行可显示温度/风扇/功耗";

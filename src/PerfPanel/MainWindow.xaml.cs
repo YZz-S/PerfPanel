@@ -435,7 +435,7 @@ public partial class MainWindow : Window
 
         foreach (var card in new FrameworkElement[]
                  {
-                     cardCpu, cardGpu, cardMemory, cardNetwork, cardNotes, cardWeather, cardCodingPlan
+                     cardCpu, cardGpu, cardMemory, cardStorage, cardNetwork, cardNotes, cardWeather, cardCodingPlan
                  })
         {
             card.Margin = new Thickness(0, 0, 0, 10);
@@ -797,6 +797,7 @@ public partial class MainWindow : Window
         ringRam.Value = s.RamLoad;
         ringRam.Text = $"{s.RamLoad:F0}%";
         ringRam.RingBrush = LoadBrush(s.RamLoad);
+        UpdateStorage(s);
 
         // ---- 网络 ----
         txtNetIf.Text = s.NetInterface;
@@ -819,6 +820,82 @@ public partial class MainWindow : Window
 
         // ---- 便签 / 待办 / 专注提醒 ----
         UpdateNotesCard(s.Time);
+    }
+
+    // ---------- 磁盘 ----------
+
+    private string _diskSig = "";
+    private readonly List<(Border Track, Border Fill, System.Windows.Controls.TextBlock Value)> _diskRows = [];
+
+    /// <summary>磁盘卡:卷行按(盘符,总容量)签名重建一次,每秒只刷新用量条/数值/温度;无卷时整卡隐藏。</summary>
+    private void UpdateStorage(SensorSnapshot s)
+    {
+        var vols = s.DiskVolumes;
+        if (vols.Count == 0)
+        {
+            cardStorage.Visibility = Visibility.Collapsed;
+            return;
+        }
+        cardStorage.Visibility = Visibility.Visible;
+        txtStorageNote.Text = vols.Count == 1 ? "1 个分区" : $"{vols.Count} 个分区";
+
+        string sig = string.Join("|", vols.Select(v => $"{v.Label}:{v.TotalGb:F0}"));
+        if (sig != _diskSig)
+        {
+            _diskSig = sig;
+            _diskRows.Clear();
+            storageRows.Children.Clear();
+            foreach (var v in vols)
+            {
+                var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                row.Children.Add(new TextBlock
+                {
+                    Text = v.Label, FontSize = 12.5, FontWeight = FontWeights.Bold,
+                    FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#C9D6EE"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                });
+
+                var track = new Border
+                {
+                    Height = 6, CornerRadius = new CornerRadius(3), ClipToBounds = true,
+                    Background = BrushFromHex("#1B2743"), VerticalAlignment = VerticalAlignment.Center,
+                };
+                var fill = new Border
+                {
+                    CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left,
+                    Background = LoadBrush((float)(v.TotalGb > 0 ? v.UsedGb / v.TotalGb * 100 : 0)), Width = 0,
+                };
+                track.Child = fill;
+                Grid.SetColumn(track, 1);
+                row.Children.Add(track);
+
+                var value = new TextBlock
+                {
+                    FontSize = 11.5, FontFamily = new FontFamily("Consolas"),
+                    Foreground = BrushFromHex("#8FA3C8"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+                };
+                Grid.SetColumn(value, 2);
+                row.Children.Add(value);
+
+                storageRows.Children.Add(row);
+                _diskRows.Add((track, fill, value));
+            }
+        }
+
+        for (int i = 0; i < _diskRows.Count && i < vols.Count; i++)
+        {
+            var v = vols[i];
+            var (track, fill, value) = _diskRows[i];
+            double pct = v.TotalGb > 0 ? v.UsedGb / v.TotalGb * 100.0 : 0;
+            fill.Width = Math.Clamp(pct / 100.0, 0, 1) * track.ActualWidth;
+            fill.Background = LoadBrush((float)pct);
+            value.Text = $"{v.UsedGb:F1} / {v.TotalGb:F0} GB" + (v.TempC is { } t ? $" · {t:F0}°" : "");
+        }
     }
 
     /// <summary>内存频率(SPD 固定值,WMI 一次查询后缓存):取各内存条的 ConfiguredClockSpeed

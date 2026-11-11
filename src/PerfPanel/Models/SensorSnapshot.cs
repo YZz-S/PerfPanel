@@ -36,4 +36,10 @@ public class SensorSnapshot
     public long NetDownBps;              // 字节/秒
     public long NetUpBps;
     public string NetInterface = "";
+
+    // 磁盘(固定分区;温度来自 LHM 存储 SMART,管理员模式;WMI 容量免管理员)
+    public List<DiskVolumeInfo> DiskVolumes = [];
 }
+
+/// <summary>单个固定磁盘分区:盘符(C:)、已用/总容量(GB)、所属物理盘的 SMART 温度(取不到为 null)。</summary>
+public sealed record DiskVolumeInfo(string Label, double UsedGb, double TotalGb, float? TempC);
