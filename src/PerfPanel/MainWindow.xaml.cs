@@ -124,6 +124,7 @@ public partial class MainWindow : Window
         _ = CodingPlanLoopAsync();
         _ = LmStudioLoopAsync();
         _ = StrataLoopAsync();
+        _ = Task.Run(RamSpeedSuffix);   // 内存频率 SPD 值后台预热,首个 Tick 不卡 UI
 
         // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
         // 保证开机自启动后面板始终铺满副屏、不被任务栏盖住底部
@@ -791,7 +792,7 @@ public partial class MainWindow : Window
         // ---- 内存 ----
         txtRamPct.Text = $"{s.RamLoad:F0}%";
         txtRamPct.Foreground = LoadBrush(s.RamLoad);
-        txtRamDetail.Text = $"{s.RamUsedGb:F1} / {s.RamTotalGb:F1} GB";
+        txtRamDetail.Text = $"{s.RamUsedGb:F1} / {s.RamTotalGb:F1} GB{RamSpeedSuffix()}";
         SetBar(barRamFill, (barRamFill.Parent as Border)?.ActualWidth ?? 0, s.RamLoad / 100f);
         ringRam.Value = s.RamLoad;
         ringRam.Text = $"{s.RamLoad:F0}%";
@@ -818,6 +819,34 @@ public partial class MainWindow : Window
 
         // ---- 便签 / 待办 / 专注提醒 ----
         UpdateNotesCard(s.Time);
+    }
+
+    /// <summary>内存频率(SPD 固定值,WMI 一次查询后缓存):取各内存条的 ConfiguredClockSpeed
+    /// (缺则退 Speed)最小值,显示如「 · 8000MT/s」;查不到返回空串(不显示)。</summary>
+    private static string? _ramSpeedCache;
+
+    private static string RamSpeedSuffix()
+    {
+        if (_ramSpeedCache == null)
+        {
+            try
+            {
+                double min = double.MaxValue;
+                using var s = new System.Management.ManagementObjectSearcher(
+                    "SELECT ConfiguredClockSpeed, Speed FROM Win32_PhysicalMemory");
+                foreach (var mo in s.Get())
+                {
+                    double v = Convert.ToDouble(mo["ConfiguredClockSpeed"] ?? mo["Speed"] ?? 0);
+                    if (v > 0) min = Math.Min(min, v);
+                }
+                _ramSpeedCache = min == double.MaxValue ? "" : $" · {min:F0}MT/s";
+            }
+            catch
+            {
+                _ramSpeedCache = "";   // WMI 不可用/无条目:不显示频率,不影响内存用量
+            }
+        }
+        return _ramSpeedCache;
     }
 
     private void UpdateWeather()
