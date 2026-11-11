@@ -20,15 +20,18 @@ Portrait 440×1920 (live panel):
 - **CPU**: large usage readout + 120s history graph, frequency (LHM core clocks, falling back to WMI effective frequency that can exceed the nominal rate under boost), temperature, power draw, fan speed (desktop boards whose SuperIO chip exposes a fan sensor; some mini-PC / laptop EC fans are not readable)
 - **GPU**: usage + history graph, VRAM usage (progress bar), temperature, power draw, fan (rows hide automatically when the iGPU exposes no sensor; AMD iGPU temperature comes from its VR SoC sensor)
 - **Notes / todos**: a card showing a one-line sticky note and a todo list — click a row on the panel to toggle it done; rotating focus reminders (e.g. "stay on your review plan", "check the revision kanban") highlight on a 15–90 min cycle. Content persists in `notes.json` next to the exe, editable in Settings (S); landscape mode enlarges it into a big FOCUS card (todos clickable); built-in **pomodoro timer** (progress ring, work/break rotation, start/pause/reset/skip, system chime + 8-second banner on completion, durations configurable in Settings)
-- **RAM**: usage percentage + used/total
+- **RAM**: usage percentage + used/total, module frequency from SMBIOS (`Win32_PhysicalMemory`, shown as `· 8000MT/s` — the slowest stick's configured clock when mixed)
+- **Disks**: per-volume usage bars for every fixed partition (C:/D:/…, multiple disks supported), each tagged with its physical disk's SMART temperature when available (admin mode, LibreHardwareMonitor storage sensors); capacity comes from WMI and works without admin — portrait card; in landscape the STORAGE card takes the top-right slot
 - **Network**: real-time up/down speeds + download history graph, auto-selects the active adapter
-- **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`)
-- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage), OpenCode Go (5h/week/month usage) — remaining quota with reset countdowns
+- **Weather**: Open-Meteo free international source (no key; optional Amap key switches to a more stable China source), IP-based location (editable via `weather.json`); an optional QWeather key+host makes QWeather the **primary** source — temperature / condition / wind / humidity / AQI / UV / **official weather alerts** all domestic
+- **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage), OpenCode Go (5h/week/month usage), CommandCode (GOAT plan) — remaining quota with reset countdowns
 - **LM Studio monitoring**: a strip at the bottom of the quota card shows whether the local LM Studio server is up, which model(s) are loaded, how many requests are in flight, and prefill (prompt eval) / decode (eval) speeds in tok/s shown only while fresh (within 3 s of the log event; while a request is in flight the last measured speed is kept, since timing lines print only when a request ends). When several models are loaded the strip rotates through them every 3 s, showing each model's own in-flight count, prefill progress and speeds — parsed from LM Studio's own server log, no API token needed (newer builds require a Bearer token for the REST API and never store the plaintext token on disk)
+- **Strata monitoring**: a strip at the bottom of the quota card shows whether the local Strata engine is up, the loaded model, queued requests, and prefill/decode speeds — while inferring, decode is the server's rolling average (marked live, plus the speculative-decoding hit rate when reported); when idle, the last request's explicit prefill·decode values. Data comes from the engine's local API (/health unauthenticated for up/loaded state, /status·/metrics for speeds) — no log parsing; if the engine runs with an API key, paste it in Settings and the panel sends a Bearer header
+- **Update check**: GitHub Releases queried on startup + every 6 h; a newer release shows a clickable footer badge (`⬇ 新版本`) and a one-time toast — GitHub unreachable stays silent
 - **Custom title**: the top-left `PERF PANEL` label is editable in Settings → Display (any text/emoji, applies as you type; leave it empty to hide it)
 - **Custom background**: pick a local image in Settings → Display (png/jpg/bmp/gif; it is copied next to the exe so the panel keeps working even if the source file moves or is deleted); two live sliders adjust background-image opacity and card opacity — lowering the card opacity lets the image show through while text stays fully opaque; without an image the default dark backdrop is kept
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
-- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge (plus weather), the bottom row holds a large notes/todos card, network and the quota card (each provider renders one aligned nested ring gauge — 5h/week/month from outer to inner — with the tightest remaining quota in the center; balance-type providers like DeepSeek show a full ring with the amount); `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
+- **Portrait/landscape layouts**: in landscape 1920×440 the clock sits centered; the top row holds compact CPU/GPU/memory tiles whose usage is a ring gauge plus the STORAGE disk card, the bottom row holds the FOCUS notes/todos card (compact half-width), weather, network and the quota card (each provider renders one aligned nested ring gauge — 5h/week/month from outer to inner — with the tightest remaining quota in the center; balance-type providers like DeepSeek show a full ring with the amount); same-column pairs (STORAGE/quota, GPU/weather) let the visible one span both rows when its partner is hidden; `auto` picks by the display's shape, or pin the direction via Settings, `config.json`, or the command line
 
 ## Run
 
@@ -82,6 +85,11 @@ The easiest way: double-click the ready-made scripts in `dist/` —
 
 - The weather card shows "City · refreshes in N min" and auto-refreshes every 30 minutes
 - China enhancement: Settings (`S` or ⚙) → "Data Source" — fill in an Amap *Web Service* key (free at [console.amap.com](https://console.amap.com), choose the "Web Service" type) to switch weather & geocoding to Amap: more stable inside China, with address-level precision. Leave it empty to keep Open-Meteo
+- **QWeather as primary source (optional)**: fill in a [QWeather](https://dev.qweather.com) API Host + API KEY (Settings → "Data Source" → 和风天气) and the whole card switches to QWeather's new API — current temp/condition/humidity/wind-scale·direction·speed (m/s → km/h), today's max UV, station-realistic China-standard AQI, and official **weather alerts** (the most severe active one is shown on the card, colored by official level), all domestic and the closest to what phone weather apps show; if the current-weather call fails the chain falls back to Amap/Open-Meteo with the same per-item fallbacks (UV/AQI/wind) as before, and Amap remains the locator/geocoder. Registration: dev.qweather.com → console → Projects → create project → credential (**API KEY**); the personal API Host is on the console home. Free tier ≈ 50k calls/month (4 per weather refresh: current / daily / air / alerts)
+- **Numbers line up with phone weather/AQI apps**:
+  - Wind: Amap only gives a level (e.g. "≤3") plus direction, so the panel shows `≤3级·南风` verbatim and never invents km/h — a real wind speed always comes from Open-Meteo's measured 10 m wind (enhancement chain; hidden if unavailable)
+  - Air quality: Open-Meteo has no native China-standard AQI, so the panel derives it from PM2.5/PM10/O₃/NO₂/CO/SO₂ via HJ 633-2012 breakpoints (hourly PM against 24 h breakpoints, the rest 1 h, max of sub-indices) — same scale as the "China standard" numbers domestic apps show, replacing the US `us_aqi`; with a QWeather key configured the AQI switches to QWeather's own China-standard index (station-realistic), with the same HJ 633 computation as fallback
+  - Location: manual entries like `朝阳区·北京市` (child·parent display form) are normalized back to `北京市朝阳区` and resolved to district-level adcode + district-center coordinates; when a manual city is set, every refresh geocodes once and the cache is only a fallback, so stale city-level/failed records can't stick around
 - Custom city (Open-Meteo free geocoding; Chinese/pinyin/English all work):
 
 ```
@@ -105,6 +113,7 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 | Volcano Ark Agent/Coding Plan | unofficial console OpenAPI (same as CC Switch) | 5h/weekly/monthly quota + reset countdown |
 | Xiaomi MiMo | console API via browser login Cookie (same as CodexBar) | pay-as-you-go balance (¥) + Token Plan monthly usage % + period-end countdown |
 | OpenCode Go | API Key Bearer `GET zen/go/v1/usage` (endpoint as probed by CodexBar) | rolling-5h/weekly/monthly usage % + reset countdown; remaining dollars when the response carries them |
+| CommandCode (GOAT plan) | the official CLI's private `/alpha/whoami` / `billing/credits` / `billing/subscriptions` / `usage/summary` routes (same as CC Switch) | balance (remaining credits pool, USD) + 5h/weekly/monthly usage % + reset countdown |
 
 **Where to put keys**: Settings (`S` or ⚙) → "Coding Plan Quota":
 
@@ -113,14 +122,15 @@ The CODING PLAN card shows each subscription's remaining quota and reset countdo
 - **Volcano Ark**: the **IAM AccessKey ID + Secret Access Key** from the Volcengine console ([volcengine.com](https://www.volcengine.com) → avatar at the top right → API access keys) — **not** the Ark inference API key. Quota queries go through the console-plane OpenAPI with AK/SK signing, so inference keys won't work
 - **Xiaomi MiMo**: paste the **whole console Cookie header** (neither `tp-` nor `sk-` API keys can query usage — only a logged-in account session works). Log in at [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → refresh → click any `/api/v1` request → Request Headers → copy the full `Cookie` line (must contain `api-platform_serviceToken` and `userId`); re-copy when the session expires
 - **OpenCode Go**: the API key from [opencode.ai/console](https://opencode.ai/console) (`sk-…`; requires an active Go / Go Plus subscription)
+- **CommandCode**: the API key from [commandcode.ai](https://commandcode.ai) → Studio › API Keys (every plan with API access, i.e. everything except the $1 Go plan). Quota goes through the `/alpha/*` routes the official CLI itself uses — undocumented internals, and the shown plan name (GOAT / Pro / Max…) comes from your subscription's `planId`
 
 Each item has "Save & Test" for instant validation; leave it empty and the panel simply skips that provider. Keys are stored in `config.json` next to the exe.
 
-**Key masking**: every key/Cookie input (the AMap key included) is masked as `●●●●` and read-only by default; click the 👁 icon on the field's right edge to reveal it temporarily and make it editable — losing focus or clicking again re-masks. Reveal first to type or paste; the stored value is always the real plaintext and "Save & Test" is unaffected.
+**Key masking**: every key/Cookie input (the AMap key included) is masked as `●●●●` by default, and the masked field is still editable — click in and type to replace the whole value (new characters also show as dots), Backspace removes the last character, pasting replaces everything; click the 👁 icon on the field's right edge to reveal the plaintext for viewing or patching the middle — losing focus re-masks. The stored value is always the real plaintext and "Save & Test" is unaffected.
 
 **Settings window adaptation**: the window used to be squeezed into a ~460px-wide sliver when opened on the panel's narrow side screen (e.g. a 440×1920 portrait display); it now relocates to the center of the **largest display** whenever the current screen's work area is under 60% of the largest one, and it is freely resizable, with inputs and dropdowns shrinking gracefully in narrow windows (slim scrollbars, wrapping hints).
 
-> The GLM/Volcano/MiMo integrations use unofficial APIs (mirroring CC Switch / CodexBar), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields.
+> The GLM/Volcano/MiMo integrations use unofficial APIs (mirroring CC Switch / CodexBar), so upstream field changes can break queries — on failure the panel shows the reason. The last raw Volcano response is saved to `volc-last-response.json` next to the exe, which helps when checking for missing/renamed fields. CommandCode's `/alpha/*` routes are the official CLI's undocumented internals (field semantics mirrored from CC Switch), and the latest responses of every endpoint are dumped to `cc-last-response.json` next to the exe for the same kind of checking.
 
 ## LM Studio monitoring
 
@@ -130,6 +140,26 @@ The quota card carries an `LM STUDIO` strip (2 s refresh; toggle + port in Setti
 - **Everything else**: LM Studio's server log at `%USERPROFILE%\.lmstudio\server-logs`. Request pairing (`Running chat completion` +1 vs `Finished streaming response` / `Generated prediction` −1) gives the in-flight count per model; the engine `print_timing` lines give the prefill (prompt eval) and decode (eval) speeds, timestamped from the log so stale values are no longer shown, and attributed to the model of the next completion event (timing lines carry a slot id, not a model name — single-model work is exact, heavy multi-model concurrency can misattribute); during generation the per-token `Accumulated N tokens` lines (which carry the model name, so attribution is exact) are aggregated per second into a live decode rate, with the periodic `n_gen … tg_3s` timing lines and the end-of-request values as fallbacks; `Unloading model … due to TTL` removes a model instantly
 
 Shown state: server-down / inferring (with `并发 N` = N requests in flight) / `已加载 N 个模型` / idle. Since the log carries no authoritative loaded-model list without a token, "loaded" means in flight right now or active within the JIT-unload TTL window (default 5 min). In landscape the provider legend keeps only each provider's tightest quota window so the strip fits; portrait keeps all rows.
+
+## Strata monitoring
+
+The quota card carries a `STRATA` strip (2 s refresh; toggle / port / key in Settings → "Coding Plan Quota" → Strata). All data comes from the Strata engine's local HTTP API — the log is not read:
+
+- **Online check**: TCP probe of the engine port (default `8080`, fixed by the desktop presets). The engine only listens while a model is loaded, so an unloaded model or a stopped engine reads as server-down — note the desktop Web UI's port (e.g. `47831`) is a separate SPA proxy that serves HTML for these paths and carries no monitoring endpoints
+- **Loaded state**: the engine's `/health` is unauthenticated and returns `loaded` plus the model id; unloaded shows the "no model loaded" state
+- **Speeds**: `/status` reports the rolling-average decode speed while inferring (`tokens_per_s_mean`, displayed as live) and the queued request count; `/metrics`'s `last_timings` reports the last request's prefill (`prompt_per_second`) and decode (`predicted_per_second`) — exactly the values shown while the engine is idle; when speculative decoding totals exist (`drafts_accepted/offered`) a hit rate is appended
+- **Key**: when the engine runs with an API key, `/status` and `/metrics` demand a Bearer token (`/health` stays open): paste it in Settings (masked display; the panel sends `Authorization: Bearer`; retrievable via `strata launch --show-key`). A wrong key turns the status dot red with the "wrong key" hint
+
+Shown state: server-down / no model loaded / idle / inferring (with `排队 N` = N queued requests) / wrong key. Colors and semantics follow the LM Studio strip (prefill amber, decode cyan, grey dot when down). While nothing is running the strip shows only its hint text and issues no requests.
+
+## Update check
+
+The panel queries [GitHub Releases](https://github.com/YZz-S/PerfPanel/releases) once ~5 s after startup and then every 6 hours. When the latest release tag is newer than the exe's build version (`<Version>` in the csproj, date-style like `2026.11.11`):
+
+- the footer turns bright cyan and appends a clickable `⬇ 新版本 vX.Y.Z(点此查看)` hyperlink (WPF-native link, opens the release page in the default browser; the URL is allowlisted to this repo's GitHub addresses — anything else falls back to the releases page)
+- a system toast notifies once per new tag
+
+GitHub unreachable or rate-limited = silent skip; no effect on the panel. Released versions carry the tag `v<version>` (e.g. `v2026.11.11`), which the comparison parses.
 
 ## Notes / todos / focus reminders
 
@@ -175,6 +205,7 @@ src/PerfPanel/
     ├── NetworkMonitorService.cs   # adapter throughput (sticky adapter choice)
     ├── WeatherService.cs          # Open-Meteo + geocoding, custom location, silent failure
     ├── LmStudioService.cs         # LM Studio: server-log tailing (loaded models / in-flight / prefill-decode tok/s) + port probe
+    ├── StrataService.cs           # Strata: engine local API (/health · /status · /metrics) monitoring (loaded/queued/prefill·decode speeds)
     ├── AutostartService.cs        # autostart: scheduled task / registry dual channel
     └── MonitorHelper.cs           # EnumDisplayMonitors / SetWindowPos P/Invoke (no WinForms)
 ```

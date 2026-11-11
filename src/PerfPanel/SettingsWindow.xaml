@@ -157,6 +157,35 @@
                                            Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 <TextBlock Text="高德 Key 申请:console.amap.com → 应用管理 → 创建『Web 服务』类型 Key"
                                            FontSize="11" Foreground="#55648A" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
+                                <TextBlock Text="和风天气(可选:填了即天气主源切到和风,温度/天气/风/污染/UV 全国内口径,失败自动回落)" Style="{StaticResource LabelStyle}" Margin="0,14,0,0"/>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="API Host" Style="{StaticResource LabelStyle}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox x:Name="txtQwHost" Grid.Column="1" Height="32" VerticalContentAlignment="Center" Padding="8,0"
+                                             Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"
+                                             ToolTip="你的专属 API Host,和风控制台首页复制,形如 abcxyz.qweatherapi.com"/>
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid>
+                                        <TextBox x:Name="txtQwKey" Height="32" VerticalContentAlignment="Center" Padding="8,0,36,0"
+                                                     Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                        <Button x:Name="btnEyeQw" Style="{StaticResource EyeBtnStyle}" Content="👁"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    </Grid>
+                                    <Button x:Name="btnQwSave" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock x:Name="lblQwStatus" Text="留空 = 不启用(天气走高德/Open-Meteo,污染/UV/风速为估算)"
+                                           Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="申请:dev.qweather.com 注册 → 控制台 → 项目管理 → 创建项目 → 创建凭据(身份认证方式 API KEY);API Host 在控制台首页复制。免费订阅约 5 万次/月,面板每次天气刷新用 4 次(实况/逐日/空气/预警)。"
+                                           FontSize="11" Foreground="#55648A" Margin="0,6,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
 
@@ -319,7 +348,24 @@
                             <TextBlock Text="获取:登录 opencode.ai/console → 订阅 Go → API Keys 复制 sk- 开头的 Key。Go 的限额是 5h=$X、周、月三窗口(官方目前无公开 API 文档,此端点与 CodexBar 实测一致)。"
                                        FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
 
-                            <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱/OpenCode Go 填各自平台的 API Key;MiMo 粘贴控制台 Cookie。均留空 = 不查询该项。"
+                            <TextBlock Text="CommandCode API Key(commandcode.ai,查 GOAT 等套餐 5h/周/月额度)" Style="{StaticResource LabelStyle}" Margin="0,12,0,0"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid>
+                                    <TextBox x:Name="txtCcKey" Height="32" VerticalContentAlignment="Center" Padding="8,0,36,0"
+                                                 Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                    <Button x:Name="btnEyeCc" Style="{StaticResource EyeBtnStyle}" Content="👁"
+                                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                </Grid>
+                                <Button x:Name="btnCcTest" Grid.Column="1" Content="保存并测试" Style="{StaticResource BtnStyle}" Margin="8,0,0,0"/>
+                            </Grid>
+                            <TextBlock Text="获取:commandcode.ai Studio › API Keys 创建 Key(GOAT 及以上套餐均适用)。额度走官方 CLI 的 /alpha 私有路由(未公开文档,口径照 cc-switch 实测),状态卡的余额为 monthly+purchased+freeCredits 剩余池。"
+                                       FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="注意:火山需填控制台 IAM 的访问密钥(非推理 API Key);DeepSeek/智谱/OpenCode Go/CommandCode 填各自平台的 API Key;MiMo 粘贴控制台 Cookie。均留空 = 不查询该项。"
                                        FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
 
                             <!-- LM Studio 本地推理监控 -->
@@ -337,6 +383,33 @@
                                          Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
                             </Grid>
                             <TextBlock Text="数据取自本机服务日志 %USERPROFILE%\.lmstudio\server-logs(2 秒刷新,无需 API Token),端口须与 LM Studio 开发者页 → Server 一致;服务器开着但没跑模型时显示「空闲」。"
+                                       FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+                            <!-- Strata 本地推理监控 -->
+                            <TextBlock Text="Strata 本地推理" Style="{StaticResource SectionTitleStyle}" Margin="0,20,0,0"/>
+                            <CheckBox x:Name="chkShowStrata" Content="监控 Strata(加载态 / 排队请求 / prefill·decode 速度)"
+                                      Style="{StaticResource CheckStyle}"/>
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="引擎端口" Style="{StaticResource LabelStyle}" VerticalAlignment="Center"/>
+                                <TextBox x:Name="txtStrataPort" Grid.Column="1" Width="110" HorizontalAlignment="Left" Margin="12,0,0,0"
+                                         Height="30" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                            </Grid>
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtStrataKey" Height="30" VerticalContentAlignment="Center" Padding="8,0"
+                                         Background="#1B2743" Foreground="#E8EFFC" BorderBrush="#223052" CaretBrush="#22D3EE"/>
+                                <Button x:Name="btnEyeStrata" Style="{StaticResource EyeBtnStyle}" Content="👁"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            </Grid>
+                            <TextBlock Text="数据取自引擎本机 API:http://127.0.0.1:{端口} 的 /health(免鉴权)与 /status、/metrics(2 秒刷新),需要 Strata 引擎跑起来(桌面端加载模型即启动);端口默认 8080(桌面端预设),注意设置里 Web UI 的端口是另一套代理、不含这些监控端点。引擎若设置了 API Key,须在此粘贴(strata launch --show-key 可查),否则查询一律 401。"
                                        FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>

@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private readonly WeatherService _weather = new();
     private readonly CodingPlanService _codingPlan = new();
     private readonly LmStudioService _lmStudio = new();
+    private readonly StrataService _strata = new();
+    private readonly UpdateCheckService _update = new();
     private static readonly TimeSpan LmsRotate = TimeSpan.FromSeconds(3);   // 多模型轮播间隔
     private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -53,6 +55,9 @@ public partial class MainWindow : Window
 
     /// <summary>设置窗口访问面板内部的 LM Studio 监控服务。</summary>
     public LmStudioService LmStudio => _lmStudio;
+
+    /// <summary>设置窗口访问面板内部的 Strata 监控服务。</summary>
+    public StrataService Strata => _strata;
 
     /// <summary>设置窗口访问传感器聚合器(GPU 列表与切换)。</summary>
     public MonitorAggregator Aggregator => _agg;
@@ -119,6 +124,9 @@ public partial class MainWindow : Window
         _ = WeatherLoopAsync();
         _ = CodingPlanLoopAsync();
         _ = LmStudioLoopAsync();
+        _ = StrataLoopAsync();
+        _ = _update.LoopAsync(OnNewVersion);   // GitHub Releases 更新检测(启动 5s 后首查,6h 一次)
+        _ = Task.Run(RamSpeedSuffix);   // 内存频率 SPD 值后台预热,首个 Tick 不卡 UI
 
         // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
         // 保证开机自启动后面板始终铺满副屏、不被任务栏盖住底部
@@ -429,7 +437,7 @@ public partial class MainWindow : Window
 
         foreach (var card in new FrameworkElement[]
                  {
-                     cardCpu, cardGpu, cardMemory, cardNetwork, cardNotes, cardWeather, cardCodingPlan
+                     cardCpu, cardGpu, cardMemory, cardStorage, cardNetwork, cardNotes, cardWeather, cardCodingPlan
                  })
         {
             card.Margin = new Thickness(0, 0, 0, 10);
@@ -448,6 +456,7 @@ public partial class MainWindow : Window
         txtGpuName.MaxWidth = 240;
         txtNoteText.FontSize = 15;
         txtNotesReminder.FontSize = 12;
+        txtNotesHint.Visibility = Visibility.Visible;
         MoveTo(notesMainCol, gridPomodoro, 1);      // 竖屏窄:番茄钟堆叠回 便签 与 待办 之间
         gridPomodoro.Margin = new Thickness(0, 10, 0, 0);
         ringPomo.Width = ringPomo.Height = 92;
@@ -502,12 +511,27 @@ public partial class MainWindow : Window
         cardGpu.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landMemCell, cardMemory);
         cardMemory.Margin = new Thickness(0, 0, 12, 12);
-        MoveTo(landNetCell, cardNetwork);
-        cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landDiskCell, cardStorage);          // 右上:磁盘卡(轻内容居上,天气让到下排)
+        cardStorage.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landNotesCell, cardNotes);
         cardNotes.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landWxCell, cardWeather);            // 天气移底排:与 FOCUS/网络同排,右列留给磁盘/额度
+        cardWeather.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landNetCell, cardNetwork);
+        cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landPlanCell, cardCodingPlan);
+        cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
         MoveTo(notesPomoCell, gridPomodoro);        // 横屏宽:番茄钟移到右列,与左列便签/待办并排
         gridPomodoro.Margin = new Thickness(14, 0, 0, 0);
+
+        // FOCUS 让出半列后的紧凑字号(ArrangePortrait 还原)
+        txtNoteText.FontSize = 15.5;
+        _todoFontSize = 13;
+        txtNotesReminder.FontSize = 11;
+        txtNotesHint.Visibility = Visibility.Collapsed;
+        ringPomo.Width = ringPomo.Height = 78;
+        txtPomoPhase.FontSize = 13;
+        txtPomoHint.FontSize = 11;
 
         // 天气/额度占右列上下两格,空缺时另一半纵跨两行
         UpdateLandscapeSpans();
@@ -568,35 +592,25 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行;便签卡挂左下大格。竖版无格位概念,直接跳过。</summary>
+    /// <summary>横版同列对占位:右列 STORAGE(上)/额度(下),中列 GPU 磁贴(上)/天气(下)——
+    /// 某一方隐藏时另一方纵跨两行补位。竖版无格位概念,直接跳过。</summary>
     private void UpdateLandscapeSpans()
     {
         if (_orientation != PanelOrientation.Landscape) return;
-        bool wx = cardWeather.Visibility == Visibility.Visible;
+        bool disk = cardStorage.Visibility == Visibility.Visible;
         bool plan = cardCodingPlan.Visibility == Visibility.Visible;
-        Grid.SetRowSpan(landWxCell, 1);
-        Grid.SetRowSpan(landPlanCell, 1);
-        if (wx && plan)
-        {
-            MoveTo(landWxCell, cardWeather);
-            cardWeather.Margin = new Thickness(0, 0, 12, 12);
-            MoveTo(landPlanCell, cardCodingPlan);
-            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
-        }
-        else if (wx)
-        {
-            MoveTo(landWxCell, cardWeather);
-            cardWeather.Margin = new Thickness(0, 0, 12, 0);
-            Grid.SetRowSpan(landWxCell, 2);
-        }
-        else if (plan)
-        {
-            MoveTo(landPlanCell, cardCodingPlan);
-            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
-            Grid.SetRowSpan(landPlanCell, 2);
-        }
+        bool wx = cardWeather.Visibility == Visibility.Visible;
+        bool notes = cardNotes.Visibility == Visibility.Visible;
 
-        if (Config.Current.ShowNotes)
+        // 右列对:STORAGE / 额度
+        Grid.SetRowSpan(landDiskCell, disk && !plan ? 2 : 1);
+        Grid.SetRowSpan(landPlanCell, plan && !disk ? 2 : 1);
+        // 中列对:GPU 磁贴 / 天气(天气隐藏时 GPU 磁贴纵跨补位)
+        Grid.SetRowSpan(landWxCell, 1);
+        Grid.SetRowSpan(landGpuCell, wx ? 1 : 2);
+
+        // 底排左端 FOCUS:隐藏时该格空置(与既往行为一致)
+        if (notes)
             MoveTo(landNotesCell, cardNotes);
         else
             MoveTo(landNotesCell, null);
@@ -736,6 +750,27 @@ public partial class MainWindow : Window
                 ? "SYSTEM MONITOR · FULL · CPU温度不可用(需安装 PawnIO 驱动)"
                 : "SYSTEM MONITOR · FULL SENSORS";
 
+        // 更新提示:发现新版本时页脚追加可点击的超链接徽标并高亮,无新版本恢复常态文案
+        bool hasUpdate = _update.UpdateAvailable;
+        txtFooter.Foreground = BrushFromHex(hasUpdate ? "#7DD3FC" : "#3D4B6E");
+        txtFooter.Cursor = hasUpdate ? Cursors.Hand : Cursors.Arrow;
+        if (hasUpdate)
+        {
+            txtFooter.Inlines.Clear();
+            txtFooter.Inlines.Add(!full
+                ? "SYSTEM MONITOR · BASIC(管理员可解锁温度)"
+                : s.CpuTemp is null
+                    ? "SYSTEM MONITOR · FULL · CPU温度不可用(需安装 PawnIO 驱动)"
+                    : "SYSTEM MONITOR · FULL SENSORS");
+            // Hyperlink 由 WPF 自身导航打开默认浏览器;URL 过白名单,网络下发的异常地址退回固定发布页
+            txtFooter.Inlines.Add(new System.Windows.Documents.Hyperlink(
+                new Run($" · ⬇ 新版本 {_update.LatestTag}(点此查看)"))
+            {
+                NavigateUri = new Uri(AllowedReleaseUrl()),
+                Foreground = BrushFromHex("#7DD3FC"),
+            });
+        }
+
         // ---- CPU ----
         txtCpuName.Text = TrimModel(s.CpuName);
         if (s.CpuLoad is { } cl)
@@ -786,11 +821,12 @@ public partial class MainWindow : Window
         // ---- 内存 ----
         txtRamPct.Text = $"{s.RamLoad:F0}%";
         txtRamPct.Foreground = LoadBrush(s.RamLoad);
-        txtRamDetail.Text = $"{s.RamUsedGb:F1} / {s.RamTotalGb:F1} GB";
+        txtRamDetail.Text = $"{s.RamUsedGb:F1} / {s.RamTotalGb:F1} GB{RamSpeedSuffix()}";
         SetBar(barRamFill, (barRamFill.Parent as Border)?.ActualWidth ?? 0, s.RamLoad / 100f);
         ringRam.Value = s.RamLoad;
         ringRam.Text = $"{s.RamLoad:F0}%";
         ringRam.RingBrush = LoadBrush(s.RamLoad);
+        UpdateStorage(s);
 
         // ---- 网络 ----
         txtNetIf.Text = s.NetInterface;
@@ -815,6 +851,126 @@ public partial class MainWindow : Window
         UpdateNotesCard(s.Time);
     }
 
+    // ---------- 磁盘 ----------
+
+    private string _diskSig = "";
+    private readonly List<(Border Track, Border Fill, System.Windows.Controls.TextBlock Value)> _diskRows = [];
+
+    /// <summary>磁盘卡:卷行按(盘符,总容量)签名重建一次,每秒只刷新用量条/数值/温度;无卷时整卡隐藏。</summary>
+    private void UpdateStorage(SensorSnapshot s)
+    {
+        var vols = s.DiskVolumes;
+        var target = vols.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (cardStorage.Visibility != target)
+        {
+            cardStorage.Visibility = target;
+            UpdateLandscapeSpans();   // 右列 STORAGE/额度 跨行随显隐重算
+        }
+        if (target == Visibility.Collapsed) return;
+        txtStorageNote.Text = vols.Count == 1 ? "1 个分区" : $"{vols.Count} 个分区";
+
+        string sig = string.Join("|", vols.Select(v => $"{v.Label}:{v.TotalGb:F0}"));
+        if (sig != _diskSig)
+        {
+            _diskSig = sig;
+            _diskRows.Clear();
+            storageRows.Children.Clear();
+            foreach (var v in vols)
+            {
+                var row = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                row.Children.Add(new TextBlock
+                {
+                    Text = v.Label, FontSize = 12.5, FontWeight = FontWeights.Bold,
+                    FontFamily = new FontFamily("Consolas"), Foreground = BrushFromHex("#C9D6EE"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                });
+
+                var track = new Border
+                {
+                    Height = 6, CornerRadius = new CornerRadius(3), ClipToBounds = true,
+                    Background = BrushFromHex("#1B2743"), VerticalAlignment = VerticalAlignment.Center,
+                };
+                var fill = new Border
+                {
+                    CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left,
+                    Background = LoadBrush((float)(v.TotalGb > 0 ? v.UsedGb / v.TotalGb * 100 : 0)), Width = 0,
+                };
+                track.Child = fill;
+                Grid.SetColumn(track, 1);
+                row.Children.Add(track);
+
+                var value = new TextBlock
+                {
+                    FontSize = 11.5, FontFamily = new FontFamily("Consolas"),
+                    Foreground = BrushFromHex("#8FA3C8"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+                };
+                Grid.SetColumn(value, 2);
+                row.Children.Add(value);
+
+                storageRows.Children.Add(row);
+                _diskRows.Add((track, fill, value));
+            }
+        }
+
+        for (int i = 0; i < _diskRows.Count && i < vols.Count; i++)
+        {
+            var v = vols[i];
+            var (track, fill, value) = _diskRows[i];
+            double pct = v.TotalGb > 0 ? v.UsedGb / v.TotalGb * 100.0 : 0;
+            fill.Width = Math.Clamp(pct / 100.0, 0, 1) * track.ActualWidth;
+            fill.Background = LoadBrush((float)pct);
+            value.Text = $"{v.UsedGb:F1} / {v.TotalGb:F0} GB" + (v.TempC is { } t ? $" · {t:F0}°" : "");
+        }
+    }
+
+    // ---------- 更新检测 ----------
+
+    /// <summary>发布页 URL 白名单:只放行本仓库的 GitHub 链接,网络下发的异常地址退回固定发布页。</summary>
+    private string AllowedReleaseUrl() =>
+        _update.LatestUrl.StartsWith("https://github.com/YZz-S/PerfPanel", StringComparison.OrdinalIgnoreCase)
+            ? _update.LatestUrl
+            : "https://github.com/YZz-S/PerfPanel/releases";
+
+    /// <summary>发现新版本(检测线程回调):Toast 提示一次,页脚徽标由每秒刷新的页脚路径接上。</summary>
+    private void OnNewVersion(string tag, string url)
+    {
+        Dispatcher.InvokeAsync(() =>
+            ToastService.Show("update", "PerfPanel 有新版本", $"{tag} 已发布,点页脚「⬇ 新版本」打开发布页"));
+    }
+
+    /// <summary>内存频率(SPD 固定值,WMI 一次查询后缓存):取各内存条的 ConfiguredClockSpeed
+    /// (缺则退 Speed)最小值,显示如「 · 8000MT/s」;查不到返回空串(不显示)。</summary>
+    private static string? _ramSpeedCache;
+
+    private static string RamSpeedSuffix()
+    {
+        if (_ramSpeedCache == null)
+        {
+            try
+            {
+                double min = double.MaxValue;
+                using var s = new System.Management.ManagementObjectSearcher(
+                    "SELECT ConfiguredClockSpeed, Speed FROM Win32_PhysicalMemory");
+                foreach (var mo in s.Get())
+                {
+                    double v = Convert.ToDouble(mo["ConfiguredClockSpeed"] ?? mo["Speed"] ?? 0);
+                    if (v > 0) min = Math.Min(min, v);
+                }
+                _ramSpeedCache = min == double.MaxValue ? "" : $" · {min:F0}MT/s";
+            }
+            catch
+            {
+                _ramSpeedCache = "";   // WMI 不可用/无条目:不显示频率,不影响内存用量
+            }
+        }
+        return _ramSpeedCache;
+    }
+
     private void UpdateWeather()
     {
         if (!Config.Current.ShowWeather)
@@ -834,8 +990,9 @@ public partial class MainWindow : Window
             txtWeatherRange.Text = "";
             txtWeatherCity.Text = "获取位置/天气中…";
             StartBreathing(txtWeatherCity);
-            txtWind.Text = "--"; txtUv.Text = "--";
+            txtWind.Text = "--"; txtWindSpeed.Visibility = Visibility.Collapsed; txtUv.Text = "--";
             cellAqi.Visibility = Visibility.Collapsed;
+            txtWxAlert.Visibility = Visibility.Collapsed;
             return;
         }
         StopBreathing(txtWeatherCity);
@@ -849,7 +1006,17 @@ public partial class MainWindow : Window
         int remain = (int)Math.Ceiling((_weather.NextRefreshUtc - DateTime.UtcNow).TotalMinutes);
         txtWeatherCity.Text = remain > 0 ? $"{loc} · {remain}分钟后刷新" : $"{loc} · 刷新中…";
 
-        txtWind.Text = $"{w.WindLevel}级 {w.WindSpeedKmh:F0}km/h";
+        // 高德源:原样风级+风向;真实风速(Open-Meteo)有值才在副行显示,缺省不显示 km/h
+        txtWind.Text = w.WindLabel;
+        if (w.WindSpeedKmh is { } ws && ws > 0)
+        {
+            txtWindSpeed.Text = $"{ws:F0}km/h";
+            txtWindSpeed.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            txtWindSpeed.Visibility = Visibility.Collapsed;
+        }
         txtUv.Text = $"{w.UvIndex:F0} {w.UvLevel}";
         if (w.Aqi is { } aqi)
         {
@@ -865,6 +1032,25 @@ public partial class MainWindow : Window
         else
         {
             cellAqi.Visibility = Visibility.Collapsed;
+        }
+
+        // 灾害预警(仅和风源):颜色跟随官方预警等级
+        if (w.Alert is { Length: > 0 } alert)
+        {
+            txtWxAlert.Text = "⚠ " + alert;
+            txtWxAlert.Foreground = BrushFromHex(w.AlertColor.ToLowerInvariant() switch
+            {
+                "red" => "#FF7B72",
+                "orange" => "#FF9F4A",
+                "amber" or "yellow" => "#FBBF24",
+                "blue" => "#60A5FA",
+                _ => "#FBBF24",
+            });
+            txtWxAlert.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            txtWxAlert.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -915,7 +1101,8 @@ public partial class MainWindow : Window
         var c = Config.Current;
         bool plan = c.ShowCodingPlan && _codingPlan.AnyVisible;
         bool lms = c.ShowLmStudio;
-        if (!plan && !lms)
+        bool str = c.ShowStrata;
+        if (!plan && !lms && !str)
         {
             cardCodingPlan.Visibility = Visibility.Collapsed;
             UpdateLandscapeSpans();
@@ -923,7 +1110,12 @@ public partial class MainWindow : Window
         }
         cardCodingPlan.Visibility = Visibility.Visible;
         UpdateLandscapeSpans();
-        txtPlanTitle.Text = plan && lms ? "CODING PLAN · LM STUDIO" : plan ? "CODING PLAN" : "LM STUDIO";
+        // 标题 = 本卡启用的条目.list,多条目之间用「·」串起(如 CODING PLAN · LM STUDIO · STRATA)
+        var parts = new List<string>();
+        if (plan) parts.Add("CODING PLAN");
+        if (lms) parts.Add("LM STUDIO");
+        if (str) parts.Add("STRATA");
+        txtPlanTitle.Text = string.Join(" · ", parts);
 
         if (!plan)
         {
@@ -944,16 +1136,16 @@ public partial class MainWindow : Window
 
         planRows.Children.Clear();
         bool compact = _orientation == PanelOrientation.Landscape;
-        // 横屏 + LM Studio 条:每个供应商只保留最紧张窗口的图例,给底部 LM Studio 条让出可视高度
-        bool legendTightestOnly = compact && Config.Current.ShowLmStudio;
+        // 横屏 + LM Studio/Strata 条:每个供应商只保留最紧张窗口的图例,给底部监控条让出可视高度
+        bool legendTightestOnly = compact && (lms || str);
         var sections = _codingPlan.Current
             .Select(p => compact ? BuildCompactPlanSection(p, legendTightestOnly) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
-        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 5 家后图例文本靠截断收窄
+        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 6 家后图例文本靠截断收窄
         if (compact && sections.Count > 1)
         {
-            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 5) };
+            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 6) };
             foreach (var s in sections)
                 grid.Children.Add(s);
             planRows.Children.Add(grid);
@@ -1318,6 +1510,97 @@ public partial class MainWindow : Window
             FontWeight = weight,
         });
 
+    // ---------- Strata 本地推理 ----------
+
+    private async Task StrataLoopAsync()
+    {
+        // 启动稍等,避免与天气定位/LHM 初始化抢带宽
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        while (true)
+        {
+            try { await _strata.PollAsync(); } catch { /* 单次轮询失败不终止面板 */ }
+            if (IsLoaded) await Dispatcher.InvokeAsync(UpdateStrataCard);
+            await Task.Delay(StrataService.PollInterval);
+        }
+    }
+
+    /// <summary>设置里切显隐/改端口/改密钥后立即重画(卡片可见性与标题在 UpdateCodingPlan 里统一决定)。</summary>
+    public void RefreshStrataCard()
+    {
+        UpdateCodingPlan();
+        UpdateStrataCard();
+    }
+
+    private void UpdateStrataCard()
+    {
+        if (!Config.Current.ShowStrata)
+        {
+            rowStrata.Visibility = Visibility.Collapsed;
+            return;
+        }
+        rowStrata.Visibility = Visibility.Visible;
+        var s = _strata.Current;
+
+        // 状态点:密钥无效红、在线绿(与 LM Studio 条同一语义)、离线灰
+        dotStrata.Fill = s.Online
+            ? (s.AuthOk ? CachedBrush(0x34, 0xD3, 0x99) : CachedBrush(0xF8, 0x71, 0x71))
+            : CachedBrush(0x55, 0x64, 0x8A);
+        txtStrataQueue.Text = s.Queued > 0 ? $"排队 {s.Queued}" : "";
+
+        string state;
+        if (!s.Online) state = "服务未运行";
+        else if (!s.AuthOk) state = "密钥无效";
+        else if (s.Busy) state = "推理中";
+        else if (s.Loaded) state = "空闲";
+        else state = "未加载模型";
+        txtStrataState.Text = state;
+
+        // 横屏:模型名放标题行(与额度图例抢高度,速度行保持单行);竖屏:模型名并入速度行
+        bool compactLand = _orientation == PanelOrientation.Landscape;
+        string modelLabel = s.ModelId ?? "";
+        txtStrataModel.Visibility = compactLand && modelLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        txtStrataModel.Text = modelLabel;
+
+        txtStrataSpeed.Inlines.Clear();
+        if (!s.Online)
+        {
+            AddLmsRun(txtStrataSpeed, $"引擎未在运行(端口 {Config.Current.StrataPort}),在 Strata 加载模型后自动显示",
+                "#55648A", FontWeights.Normal);
+            return;
+        }
+        if (!s.AuthOk)
+        {
+            AddLmsRun(txtStrataSpeed, "服务要求密钥(401):设置里填入 Strata 引擎 API Key",
+                "#F87171", FontWeights.Normal);
+            return;
+        }
+
+        if (!compactLand && modelLabel.Length > 0)
+            AddLmsRun(txtStrataSpeed, modelLabel + "  ", "#C9D6EE", FontWeights.Bold);
+
+        // decode:推理中是 tokens_per_s_mean 实时滚动平均;空闲回落到上次请求的显式值
+        double? decodeTps = s.Busy && s.LiveDecode is not null ? s.LiveDecode : s.LastDecode;
+        if (s.Busy || s.LastPrefill is not null || s.LastDecode is not null)
+        {
+            if (!s.Busy && s.LastPrefill is { } pf)
+                AddLmsRun(txtStrataSpeed, "上次 ", "#55648A", FontWeights.Normal);
+            AddLmsSpeed(txtStrataSpeed, "prefill", s.LastPrefill, "F0");
+            AddLmsRun(txtStrataSpeed, " · ", "#55648A", FontWeights.Normal);
+            AddLmsSpeed(txtStrataSpeed, "decode", decodeTps, "F1");
+            if (!s.Busy) return;
+            AddLmsRun(txtStrataSpeed, " ·实时", "#55648A", FontWeights.Normal);
+            if (s.HitRate is { } hit) AddLmsRun(txtStrataSpeed, $"{hit:P0}", "#22D3EE", FontWeights.Bold);
+        }
+        else if (s.Loaded)
+        {
+            AddLmsRun(txtStrataSpeed, "已加载,上次请求速度待首次调用", "#55648A", FontWeights.Normal);
+        }
+        else
+        {
+            AddLmsRun(txtStrataSpeed, "在 Strata 桌面端加载模型后自动显示", "#55648A", FontWeights.Normal);
+        }
+    }
+
     // ---------- 便签 / 待办 / 专注提醒 ----------
 
     private string _activeReminderText = "";
@@ -1327,6 +1610,7 @@ public partial class MainWindow : Window
     {
         RebuildTodoRows();
         UpdateNotesCard(DateTime.Now);
+        UpdateLandscapeSpans();
     }
 
     /// <summary>每秒刷新:提醒周期到点触发轮换提醒,平时显示倒计时。

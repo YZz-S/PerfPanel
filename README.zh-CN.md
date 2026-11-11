@@ -20,15 +20,18 @@
 - **CPU**:占用率大数字 + 120 秒历史曲线、频率(LHM 核心时钟,读不到时用 WMI 有效频率,睿频可超标称)、温度、功耗、风扇转速(仅限主板 SuperIO 暴露风扇传感器的台式机;部分迷你主机/笔记本 EC 风扇读不到)
 - **GPU**:占用率 + 历史曲线、显存占用(带进度条)、温度、功耗、风扇(核显无独立温度/风扇传感器时自动隐藏对应行;AMD 核显温度取 VR SoC)
 - **便签 / 待办**:卡片显示一句话便签与待办清单,面板上点击整行即可勾选完成;按周期(15–90 分钟)轮换高亮专注提醒语(如"专注复习,别被别的事吸引注意力""记得查看复习计划看板");内容存 exe 旁 `notes.json`,设置(S)里编辑;横屏模式升级为左下大卡片(待办整行可点);内置**番茄钟**(进度环 + 专注/休息轮换计时,开始/暂停/重置/切换一键操作,到点系统提示音 + 完成横幅,时长可在设置改)
-- **内存**:占用百分比 + 已用/总量
+- **内存**:占用百分比 + 已用/总量,内存频率取 SMBIOS(`Win32_PhysicalMemory`,显示如 `· 8000MT/s`;混插多频率时取最慢一条)
+- **磁盘**:每个固定分区(C:/D:/…,支持多块硬盘)一行用量条,取得到时标注所属物理盘的 SMART 温度(管理员模式,LibreHardwareMonitor 存储传感器);容量来自 WMI,免管理员也可用——竖屏独立卡;横屏放在右上格
 - **网络**:实时上/下行速度 + 下行历史曲线,自动选择活动网卡
-- **天气**:Open-Meteo 免费国际源(无需 key;可填高德 Key 切换国内稳定源),自动 IP 定位(可手动改 `weather.json`)
-- **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)、OpenCode Go(5h/周/月用量)剩余额度与重置倒计时
+- **天气**:Open-Meteo 免费国际源(无需 key;可填高德 Key 切换国内稳定源),自动 IP 定位(可手动改 `weather.json`);再填和风 Host+Key 后天气主源切到和风——温度/天气现象/风/湿度/污染/UV/官方灾害预警 全国内口径
+- **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)、OpenCode Go(5h/周/月用量)、CommandCode(GOAT 套餐)剩余额度与重置倒计时
 - **LM Studio 监控**:额度卡底部的 LM STUDIO 条实时显示本机 LM Studio 是否在线、加载了哪些模型、当前几个请求在跑,以及 prefill(prompt eval)/ decode(eval)速度(tok/s)——只显示 3 秒内的新数据,推理中沿用最近一次测得值(计时行仅在请求结束时打印);多模型加载时每 3 秒轮播一个模型,逐个展示各自的在飞数/预填充/速度——数据解析自 LM Studio 自身的服务日志,无需 API Token(新版 REST 接口要求 Bearer token 且明文不落盘)
+- **Strata 监控**:额度卡底部的 STRATA 条显示本机 Strata 引擎在线/模型加载态、排队请求数和 prefill/decode 速度——推理中 decode 用服务端滚动平均值(标「·实时」,另有投机解码命中率),空闲显示「上次请求」的显式 prefill·decode 值;数据来自引擎本机 API(/health 免鉴权判在线与加载态,/status·/metrics 读速度),不读日志;引擎设置了 API Key 时在设置里粘贴,面板带 Bearer 头请求
+- **更新检测**:启动 + 每 6 小时查一次 GitHub Releases;有更新时页脚出现可点击徽标(`⬇ 新版本`)并 Toast 提示一次——GitHub 不可达时静默跳过
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
 - **自定义标题**:左上角 PERF PANEL 文字可在设置(S)→「界面」改成任意内容/emoji,输入即生效,留空 = 隐藏
 - **背景自定义**:设置(S)→「界面」选一张本地图片作面板背景(支持 png/jpg/bmp/gif,自动复制到 exe 旁随程序走,源图移动/删除不影响),「背景图不透明度」与「卡片不透明度」两根滑杆即时可调——卡片调低后背景透出,文字仍保持不透明;未设置时维持默认深色底
-- **横竖屏布局**:横版 1920×440 时钟居中,上排为 CPU/GPU/内存 圆环紧凑磁贴(用量一环了然)+天气,下排为横跨左半的大号便签待办卡片、网络与额度卡(每个供应商一枚嵌套圆环横排对齐:5h/周/月由外到内,环心显示最紧张窗口的剩余%,余额类如 DeepSeek 显示常满环+金额);`auto` 按副屏形状自动选,也可在设置、config.json 或命令行固定方向
+- **横竖屏布局**:横版 1920×440 时钟居中,上排为 CPU/GPU/内存 圆环紧凑磁贴(用量一环了然)+STORAGE 磁盘卡,下排为紧凑半宽的 FOCUS 便签待办卡、天气、网络与额度卡(每个供应商一枚嵌套圆环横排对齐:5h/周/月由外到内,环心显示最紧张窗口的剩余%,余额类如 DeepSeek 显示常满环+金额);同列对(STORAGE/额度、GPU/天气)某方隐藏时另一方自动纵跨两行;`auto` 按副屏形状自动选,也可在设置、config.json 或命令行固定方向
 
 ## 运行
 
@@ -82,6 +85,11 @@ PerfPanel.exe --autostart-status   # 查看当前注册状态
 
 - 面板天气卡片实时显示「城市 · N分钟后刷新」,每 30 分钟自动刷新
 - 国内增强:设置(S 或 ⚙)→「数据源」填高德 Web 服务 Key([console.amap.com](https://console.amap.com) 免费申请,选『Web 服务』类型),天气与城市解析切换为高德源,国内更稳定、支持地址级精确定位;留空使用 Open-Meteo 免费源
+- **和风主源(可选)**:设置 →「数据源」→ 和风天气填 API Host + API Key([dev.qweather.com](https://dev.qweather.com) 免费注册),整张天气卡切到和风新 API——实时温度/天气现象(condition.text)/湿度/风级·风向·风速(m/s→km/h)、今日最大紫外线、站点实况中国标准 AQI、官方**灾害预警**(取颜色等级最高的一条活跃预警,标题随官方等级着色),与手机天气 App 数据最同源;实时拉不到时整链回落高德/Open-Meteo 并沿用原有逐项回落(UV/AQI/风速),高德继续负责定位与地理编码。注册:控制台 → 项目管理 → 创建项目 → 创建凭据(**API KEY**);专属 API Host 在控制台首页复制。免费订阅约 5 万次/月(每次天气刷新用 4 次:实况/逐日/空气/预警)
+- **口径与真值对齐**(和手机天气/空气质量 App 对得上):
+  - 风:高德源只提供风级与风向,面板显示「≤3级·南风」原样不虚造 —— km/h 风速一律来自 Open-Meteo 的 10m 实测风速(增强链,取不到就不显示数字)
+  - 空气质量:Open-Meteo 没有现成中国标准 AQI,面板用 PM2.5/PM10/O₃/NO₂/CO/SO₂ 浓度按 HJ 633-2012 断点自算(小时代入 PM 24h 断点、其余用 1h 断点,取最大分指数),数字与国内「中国标准实报」同口径,不再用美标 us_aqi;填了和风 Key 时改用和风自带的中国标准 AQI(站点实况),回落时仍用同一套 HJ 633 自算
+  - 定位:手动城市写成「朝阳区·北京市」这类 `子·父` 形式时自动纠形为「北京市朝阳区」解析到区级 adcode 与区中心坐标;手动城市存在时每次刷新都地理编码一次、缓存只作回退,避免市级/失败记录被长期沿用
 - 自定义城市(Open-Meteo 免费地理编码,支持中文/拼音/英文):
 
 ```
@@ -105,6 +113,7 @@ PerfPanel.exe --set-city 上海
 | 火山方舟 Agent/Coding Plan | 非官方控制面 OpenAPI(同 CC Switch) | 5h/周/月窗剩余额度 + 重置倒计时 |
 | Xiaomi MiMo | 控制台 API(浏览器登录 Cookie,同 CodexBar) | 按量付费余额(¥)+ Token Plan 月额度已用百分比 + 周期截止倒计时 |
 | OpenCode Go | API Key Bearer `GET zen/go/v1/usage`(同 CodexBar 实测端点) | 5h(滚动)/周/月用量百分比 + 重置倒计时;响应带美元限额时附剩余金额 |
+| CommandCode(GOAT 套餐) | 官方 CLI 的 `/alpha/whoami`/`billing/credits`/`billing/subscriptions`/`usage/summary` 私有路由(同 CC Switch) | 余额(monthly+purchased+freeCredits 剩余池,美元)+ 5h/周/月用量百分比 + 重置倒计时 |
 
 **密钥填充位置**:设置(S 或 ⚙)→「Coding Plan 额度」:
 
@@ -113,14 +122,15 @@ PerfPanel.exe --set-city 上海
 - **火山方舟**:填**火山引擎控制台 IAM 的 AccessKey ID + Secret Access Key**(即 [volcengine.com](https://www.volcengine.com) 控制台右上角头像 → API 访问密钥),**不是**推理用的 Ark API Key —— 火山用量查询走控制面 OpenAPI,需 AK/SK 签名,推理 Key 无法使用
 - **Xiaomi MiMo**:**粘贴整段控制台 Cookie**(`tp-`/`sk-` API Key 均查不了,只能用账号登录会话)—— 登录 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → 刷新 → 点任意 `/api/v1` 请求 → Request Headers → 复制整行 Cookie(必须含 `api-platform_serviceToken` 与 `userId`);Cookie 过期后重新复制即可
 - **OpenCode Go**:填 [opencode.ai/console](https://opencode.ai/console) 的 API Key(`sk-` 开头;需已订阅 Go/Go Plus)
+- **CommandCode**:填 [commandcode.ai](https://commandcode.ai) → Studio › API Keys 创建的 Key(除 $1 的 Go 外各套餐均带 API 访问)。额度查询走官方 CLI 自己使用的 `/alpha/*` 路由(未公开文档;面板上的套餐名 GOAT/Pro/Max… 取自订阅 `planId`)
 
 各项均「保存并测试」即时验证;留空 = 面板不查询该项。密钥保存在 exe 旁 `config.json`。
 
-**密钥打码**:所有密钥/Cookie 输入框(高德 Key 亦然)默认以 `●●●●` 打码且只读,点右侧 👁 图标临时显示明文并变为可编辑、失焦或再点眼睛恢复打码——修改/粘贴需先点开眼睛,读取与保存的始终是真实明文,不影响「保存并测试」。
+**密钥打码**:所有密钥/Cookie 输入框(高德 Key 亦然)默认以 `●●●●` 打码,且打码态可直接编辑——点进框输入即整体替换重输(新键入的字符也以 ● 显示)、退格删除尾字符、粘贴整体替换;点右侧 👁 图标临时显示明文以便查看或补改中间几位,失焦自动回打码。读取与保存的始终是真实明文,不影响「保存并测试」。
 
 **设置窗自适应**:带 Owner 打开时原本会挤在面板所在的副屏(如 440×1920 竖屏)只剩 ~460px 宽,现在所在屏工作区小于最大屏六成时自动迁到**最大屏居中**;窗口可拖拽调大小,输入框与下拉在窄窗下自适应收窄(细滚动条,说明文字自动换行)。
 
-> 智谱/火山/MiMo 为非官方接口(参考 CC Switch / CodexBar 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。火山最近一次查询的原始响应会保存在 exe 旁 `volc-last-response.json`,字段缺失/变动时可据此核对。
+> 智谱/火山/MiMo 为非官方接口(参考 CC Switch / CodexBar 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。火山最近一次查询的原始响应会保存在 exe 旁 `volc-last-response.json`,字段缺失/变动时可据此核对。CommandCode 的 `/alpha/*` 是官方 CLI 未公开文档化的内部路由(字段口径照 CC Switch 实测),同样可能静默变动;各端点最新响应会落盘到 exe 旁 `cc-last-response.json` 供核对。
 
 ## LM Studio 监控
 
@@ -130,6 +140,26 @@ PerfPanel.exe --set-city 上海
 - **其余全部**:LM Studio 服务日志 `%USERPROFILE%\.lmstudio\server-logs`。「Running chat completion」+1 与「Finished streaming response」/「Generated prediction」−1 配平得到各模型在飞请求数;引擎 `print_timing` 行给出 prefill(prompt eval)与 decode(eval)速度,值随日志时间戳记录、过期即不显示,并归属给下一个完成事件的模型(计时行只带槽位号不带模型名——单模型工作时精确,多模型高并发偶有归属偏差);流式请求的逐 token「Accumulated N tokens」行(自带模型名、归属精确)按秒聚合出实时 decode 速度,数字逐秒变动;周期性 `n_gen … tg_3s` 计时行与请求结束值兜底;「Unloading model … due to TTL」立即把模型移出加载集
 
 显示状态:服务未运行 / 推理中(右侧 `并发 N` 为在飞请求数)/ 已加载 N 个模型 / 空闲。日志里拿不到权威的已加载清单(要 token),因此「已加载」口径 = 当前在飞或 JIT 卸载 TTL 窗口内(默认 5 分钟)有活动。横屏下供应商图例只保留各家的最紧张窗口,给 LM Studio 条让出可视高度;竖屏保留全部行。
+
+## Strata 监控
+
+额度卡底部的 `STRATA` 条(2 秒刷新;开关 / 端口 / 密钥在 设置 →「Coding Plan 额度」→ Strata 本地推理)。数据全部来自 Strata 引擎的本机 HTTP API,不读日志:
+
+- **在线判定**:TCP 探测引擎端口(默认 `8080`,桌面端预设固定此端口)。引擎只在加载模型后监听,卸载模型 / 引擎退出即「服务未运行」——注意桌面端 Web UI 的端口(如 `47831`)是另一套 SPA 代理,不提供 `/health` 等监控端点,别填它
+- **加载态**:引擎 `/health` 免鉴权,返回 `loaded` 与模型名;未加载时显示「未加载模型」
+- **速度**:`/status` 给推理中的滚动平均 decode 速度(`tokens_per_s_mean`,显示为「·实时」)与排队请求数;`/metrics` 的 `last_timings` 给「上次请求」的 prefill(`prompt_per_second`)与 decode(`predicted_per_second`)——引擎空闲时显示的正是这组显式值;有投机解码统计(`drafts_accepted/offered`)时附带命中率
+- **密钥**:引擎设置了 API Key 时 `/status`、`/metrics` 一律要求 Bearer(`/health` 不拦):在设置里粘贴(打码显示;面板带 `Authorization: Bearer` 头;`strata launch --show-key` 可查),不匹配时状态点变红、提示「密钥无效」
+
+显示状态:服务未运行 / 未加载模型 / 空闲 / 推理中(右侧 `排队 N` 为排队请求数)/ 密钥无效。配色与语义沿用 LM Studio 条(prefill 琥珀、decode 青、离线灰点)。引擎没在运行时该条只显示提示文本,不产生任何请求。
+
+## 更新检测
+
+面板启动约 5 秒后查一次 [GitHub Releases](https://github.com/YZz-S/PerfPanel/releases),此后每 6 小时一次。最新 release tag 比当前 exe 的构建版本(csproj `<Version>`,日期式如 `2026.11.11`)新时:
+
+- 页脚变为亮青色并追加可点击的 `⬇ 新版本 vX.Y.Z(点此查看)` 超链接(WPF 原生链接,点击用默认浏览器打开发布页;URL 走白名单,仅放行本仓库 GitHub 地址,异常响应退回固定发布页)
+- 每个 tag 只 Toast 提示一次
+
+GitHub 不可达/限流时静默跳过,不影响面板。发布版本打 `v<version>` 标签(如 `v2026.11.11`),比较逻辑按此解析。
 
 ## 便签 / 待办 / 专注提醒
 
@@ -175,6 +205,7 @@ src/PerfPanel/
     ├── NetworkMonitorService.cs   # 网卡吞吐(粘性选卡)
     ├── WeatherService.cs          # Open-Meteo + 地理编码,位置可自定义,失败静默
     ├── LmStudioService.cs         # LM Studio:服务日志尾读(加载模型/并发/prefill·decode 速度)+ 端口探测
+    ├── StrataService.cs           # Strata:引擎本机 API(/health·/status·/metrics)监控(加载态/排队/prefill·decode 速度)
     ├── AutostartService.cs        # 开机自启:计划任务/注册表双通道
     └── MonitorHelper.cs           # EnumDisplayMonitors / SetWindowPos P/Invoke(不引 WinForms)
 ```
