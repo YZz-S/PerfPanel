@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private readonly CodingPlanService _codingPlan = new();
     private readonly LmStudioService _lmStudio = new();
     private readonly StrataService _strata = new();
+    private readonly UpdateCheckService _update = new();
     private static readonly TimeSpan LmsRotate = TimeSpan.FromSeconds(3);   // 多模型轮播间隔
     private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -124,6 +125,7 @@ public partial class MainWindow : Window
         _ = CodingPlanLoopAsync();
         _ = LmStudioLoopAsync();
         _ = StrataLoopAsync();
+        _ = _update.LoopAsync(OnNewVersion);   // GitHub Releases 更新检测(启动 5s 后首查,6h 一次)
         _ = Task.Run(RamSpeedSuffix);   // 内存频率 SPD 值后台预热,首个 Tick 不卡 UI
 
         // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
@@ -748,6 +750,27 @@ public partial class MainWindow : Window
                 ? "SYSTEM MONITOR · FULL · CPU温度不可用(需安装 PawnIO 驱动)"
                 : "SYSTEM MONITOR · FULL SENSORS";
 
+        // 更新提示:发现新版本时页脚追加可点击的超链接徽标并高亮,无新版本恢复常态文案
+        bool hasUpdate = _update.UpdateAvailable;
+        txtFooter.Foreground = BrushFromHex(hasUpdate ? "#7DD3FC" : "#3D4B6E");
+        txtFooter.Cursor = hasUpdate ? Cursors.Hand : Cursors.Arrow;
+        if (hasUpdate)
+        {
+            txtFooter.Inlines.Clear();
+            txtFooter.Inlines.Add(!full
+                ? "SYSTEM MONITOR · BASIC(管理员可解锁温度)"
+                : s.CpuTemp is null
+                    ? "SYSTEM MONITOR · FULL · CPU温度不可用(需安装 PawnIO 驱动)"
+                    : "SYSTEM MONITOR · FULL SENSORS");
+            // Hyperlink 由 WPF 自身导航打开默认浏览器;URL 过白名单,网络下发的异常地址退回固定发布页
+            txtFooter.Inlines.Add(new System.Windows.Documents.Hyperlink(
+                new Run($" · ⬇ 新版本 {_update.LatestTag}(点此查看)"))
+            {
+                NavigateUri = new Uri(AllowedReleaseUrl()),
+                Foreground = BrushFromHex("#7DD3FC"),
+            });
+        }
+
         // ---- CPU ----
         txtCpuName.Text = TrimModel(s.CpuName);
         if (s.CpuLoad is { } cl)
@@ -903,6 +926,21 @@ public partial class MainWindow : Window
             fill.Background = LoadBrush((float)pct);
             value.Text = $"{v.UsedGb:F1} / {v.TotalGb:F0} GB" + (v.TempC is { } t ? $" · {t:F0}°" : "");
         }
+    }
+
+    // ---------- 更新检测 ----------
+
+    /// <summary>发布页 URL 白名单:只放行本仓库的 GitHub 链接,网络下发的异常地址退回固定发布页。</summary>
+    private string AllowedReleaseUrl() =>
+        _update.LatestUrl.StartsWith("https://github.com/YZz-S/PerfPanel", StringComparison.OrdinalIgnoreCase)
+            ? _update.LatestUrl
+            : "https://github.com/YZz-S/PerfPanel/releases";
+
+    /// <summary>发现新版本(检测线程回调):Toast 提示一次,页脚徽标由每秒刷新的页脚路径接上。</summary>
+    private void OnNewVersion(string tag, string url)
+    {
+        Dispatcher.InvokeAsync(() =>
+            ToastService.Show("update", "PerfPanel 有新版本", $"{tag} 已发布,点页脚「⬇ 新版本」打开发布页"));
     }
 
     /// <summary>内存频率(SPD 固定值,WMI 一次查询后缓存):取各内存条的 ConfiguredClockSpeed

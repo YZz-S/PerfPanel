@@ -27,6 +27,7 @@
 - **Coding Plan 额度**:DeepSeek 余额、智谱 GLM、火山方舟 Agent/Coding Plan、Xiaomi MiMo(按量付费余额 + Token Plan 套餐用量)、OpenCode Go(5h/周/月用量)、CommandCode(GOAT 套餐)剩余额度与重置倒计时
 - **LM Studio 监控**:额度卡底部的 LM STUDIO 条实时显示本机 LM Studio 是否在线、加载了哪些模型、当前几个请求在跑,以及 prefill(prompt eval)/ decode(eval)速度(tok/s)——只显示 3 秒内的新数据,推理中沿用最近一次测得值(计时行仅在请求结束时打印);多模型加载时每 3 秒轮播一个模型,逐个展示各自的在飞数/预填充/速度——数据解析自 LM Studio 自身的服务日志,无需 API Token(新版 REST 接口要求 Bearer token 且明文不落盘)
 - **Strata 监控**:额度卡底部的 STRATA 条显示本机 Strata 引擎在线/模型加载态、排队请求数和 prefill/decode 速度——推理中 decode 用服务端滚动平均值(标「·实时」,另有投机解码命中率),空闲显示「上次请求」的显式 prefill·decode 值;数据来自引擎本机 API(/health 免鉴权判在线与加载态,/status·/metrics 读速度),不读日志;引擎设置了 API Key 时在设置里粘贴,面板带 Bearer 头请求
+- **更新检测**:启动 + 每 6 小时查一次 GitHub Releases;有更新时页脚出现可点击徽标(`⬇ 新版本`)并 Toast 提示一次——GitHub 不可达时静默跳过
 - **智能降级**:无管理员权限时自动隐藏温度/功耗/风扇,右上角显示 `BASIC`;以管理员运行显示 `FULL`
 - **自定义标题**:左上角 PERF PANEL 文字可在设置(S)→「界面」改成任意内容/emoji,输入即生效,留空 = 隐藏
 - **背景自定义**:设置(S)→「界面」选一张本地图片作面板背景(支持 png/jpg/bmp/gif,自动复制到 exe 旁随程序走,源图移动/删除不影响),「背景图不透明度」与「卡片不透明度」两根滑杆即时可调——卡片调低后背景透出,文字仍保持不透明;未设置时维持默认深色底
@@ -150,6 +151,15 @@ PerfPanel.exe --set-city 上海
 - **密钥**:引擎设置了 API Key 时 `/status`、`/metrics` 一律要求 Bearer(`/health` 不拦):在设置里粘贴(打码显示;面板带 `Authorization: Bearer` 头;`strata launch --show-key` 可查),不匹配时状态点变红、提示「密钥无效」
 
 显示状态:服务未运行 / 未加载模型 / 空闲 / 推理中(右侧 `排队 N` 为排队请求数)/ 密钥无效。配色与语义沿用 LM Studio 条(prefill 琥珀、decode 青、离线灰点)。引擎没在运行时该条只显示提示文本,不产生任何请求。
+
+## 更新检测
+
+面板启动约 5 秒后查一次 [GitHub Releases](https://github.com/YZz-S/PerfPanel/releases),此后每 6 小时一次。最新 release tag 比当前 exe 的构建版本(csproj `<Version>`,日期式如 `2026.11.11`)新时:
+
+- 页脚变为亮青色并追加可点击的 `⬇ 新版本 vX.Y.Z(点此查看)` 超链接(WPF 原生链接,点击用默认浏览器打开发布页;URL 走白名单,仅放行本仓库 GitHub 地址,异常响应退回固定发布页)
+- 每个 tag 只 Toast 提示一次
+
+GitHub 不可达/限流时静默跳过,不影响面板。发布版本打 `v<version>` 标签(如 `v2026.11.11`),比较逻辑按此解析。
 
 ## 便签 / 待办 / 专注提醒
 

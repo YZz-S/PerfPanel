@@ -27,6 +27,7 @@ Portrait 440×1920 (live panel):
 - **Coding Plan quota**: DeepSeek balance, Zhipu GLM, Volcano Ark Agent/Coding Plan, Xiaomi MiMo (pay-as-you-go balance + Token Plan usage), OpenCode Go (5h/week/month usage), CommandCode (GOAT plan) — remaining quota with reset countdowns
 - **LM Studio monitoring**: a strip at the bottom of the quota card shows whether the local LM Studio server is up, which model(s) are loaded, how many requests are in flight, and prefill (prompt eval) / decode (eval) speeds in tok/s shown only while fresh (within 3 s of the log event; while a request is in flight the last measured speed is kept, since timing lines print only when a request ends). When several models are loaded the strip rotates through them every 3 s, showing each model's own in-flight count, prefill progress and speeds — parsed from LM Studio's own server log, no API token needed (newer builds require a Bearer token for the REST API and never store the plaintext token on disk)
 - **Strata monitoring**: a strip at the bottom of the quota card shows whether the local Strata engine is up, the loaded model, queued requests, and prefill/decode speeds — while inferring, decode is the server's rolling average (marked live, plus the speculative-decoding hit rate when reported); when idle, the last request's explicit prefill·decode values. Data comes from the engine's local API (/health unauthenticated for up/loaded state, /status·/metrics for speeds) — no log parsing; if the engine runs with an API key, paste it in Settings and the panel sends a Bearer header
+- **Update check**: GitHub Releases queried on startup + every 6 h; a newer release shows a clickable footer badge (`⬇ 新版本`) and a one-time toast — GitHub unreachable stays silent
 - **Custom title**: the top-left `PERF PANEL` label is editable in Settings → Display (any text/emoji, applies as you type; leave it empty to hide it)
 - **Custom background**: pick a local image in Settings → Display (png/jpg/bmp/gif; it is copied next to the exe so the panel keeps working even if the source file moves or is deleted); two live sliders adjust background-image opacity and card opacity — lowering the card opacity lets the image show through while text stays fully opaque; without an image the default dark backdrop is kept
 - **Graceful degradation**: without admin rights, temperature/power/fan cards hide automatically and the corner shows `BASIC`; running as admin shows `FULL`
@@ -150,6 +151,15 @@ The quota card carries a `STRATA` strip (2 s refresh; toggle / port / key in Set
 - **Key**: when the engine runs with an API key, `/status` and `/metrics` demand a Bearer token (`/health` stays open): paste it in Settings (masked display; the panel sends `Authorization: Bearer`; retrievable via `strata launch --show-key`). A wrong key turns the status dot red with the "wrong key" hint
 
 Shown state: server-down / no model loaded / idle / inferring (with `排队 N` = N queued requests) / wrong key. Colors and semantics follow the LM Studio strip (prefill amber, decode cyan, grey dot when down). While nothing is running the strip shows only its hint text and issues no requests.
+
+## Update check
+
+The panel queries [GitHub Releases](https://github.com/YZz-S/PerfPanel/releases) once ~5 s after startup and then every 6 hours. When the latest release tag is newer than the exe's build version (`<Version>` in the csproj, date-style like `2026.11.11`):
+
+- the footer turns bright cyan and appends a clickable `⬇ 新版本 vX.Y.Z(点此查看)` hyperlink (WPF-native link, opens the release page in the default browser; the URL is allowlisted to this repo's GitHub addresses — anything else falls back to the releases page)
+- a system toast notifies once per new tag
+
+GitHub unreachable or rate-limited = silent skip; no effect on the panel. Released versions carry the tag `v<version>` (e.g. `v2026.11.11`), which the comparison parses.
 
 ## Notes / todos / focus reminders
 
