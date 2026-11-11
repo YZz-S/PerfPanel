@@ -329,6 +329,10 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- 灾害预警(仅和风源):官方预警标题,颜色随等级,无预警隐藏 -->
+                            <TextBlock x:Name="txtWxAlert" Text="" Visibility="Collapsed" FontSize="11.5" FontWeight="Bold"
+                                       Foreground="#FBBF24" TextWrapping="Wrap" Margin="0,8,0,0"/>
+
                             <!-- 风 / 紫外线 / 空气质量 -->
                             <Grid Margin="0,12,0,0">
                                 <Grid.ColumnDefinitions>

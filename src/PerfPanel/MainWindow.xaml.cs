@@ -870,6 +870,7 @@ public partial class MainWindow : Window
             StartBreathing(txtWeatherCity);
             txtWind.Text = "--"; txtWindSpeed.Visibility = Visibility.Collapsed; txtUv.Text = "--";
             cellAqi.Visibility = Visibility.Collapsed;
+            txtWxAlert.Visibility = Visibility.Collapsed;
             return;
         }
         StopBreathing(txtWeatherCity);
@@ -909,6 +910,25 @@ public partial class MainWindow : Window
         else
         {
             cellAqi.Visibility = Visibility.Collapsed;
+        }
+
+        // 灾害预警(仅和风源):颜色跟随官方预警等级
+        if (w.Alert is { Length: > 0 } alert)
+        {
+            txtWxAlert.Text = "⚠ " + alert;
+            txtWxAlert.Foreground = BrushFromHex(w.AlertColor.ToLowerInvariant() switch
+            {
+                "red" => "#FF7B72",
+                "orange" => "#FF9F4A",
+                "amber" or "yellow" => "#FBBF24",
+                "blue" => "#60A5FA",
+                _ => "#FBBF24",
+            });
+            txtWxAlert.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            txtWxAlert.Visibility = Visibility.Collapsed;
         }
     }
 

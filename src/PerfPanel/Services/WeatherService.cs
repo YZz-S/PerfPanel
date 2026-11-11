@@ -11,7 +11,8 @@ public sealed record WeatherInfo(
     string WindLevelTxt, string WindDir, double? WindSpeedKmh,
     double UvIndex, string UvLevel,
     int? Aqi, string AqiLevel,
-    int? HumidityPct = null)
+    int? HumidityPct = null,
+    string? Alert = null, string AlertColor = "")   // 灾害预警(仅和风主源链):标题 + 官方颜色码(red/orange/amber/yellow/blue)
 {
     public int WindLevel =>
         int.TryParse(WindLevelTxt.Trim().TrimStart('≤', '<'), out var v) ? v : 0;
@@ -647,9 +648,10 @@ public sealed class WeatherService
     // ==================== 和风天气(QWeather 新 API,国内口径) ====================
     // 开发者专属 API Host(控制台首页,形如 abcxyz.qweatherapi.com)+ API KEY 凭据(X-QW-Api-Key 头)。
     // 主源链 FetchQWeatherMainAsync:实时 /weather/v1/current + 逐日 /weather/v1/daily?days=1 +
-    // 空气 /airquality/v1/current,并行 3 请求 —— 温度/天气现象(condition.text)/风级风向/湿度(0-1→%)、
-    // 今日 UV(uvIndexMax,0-15)/AQI 全国内口径;实时失败整链回落高德/Open-Meteo,
-    // 逐日/空气失败仅丢对应项(高低温沿用当前温度、UV 用实时的 uvIndex、AQI 隐藏)。
+    // 空气 /airquality/v1/current + 预警 /weatheralert/v1/current,并行 4 请求 ——
+    // 温度/天气现象(condition.text)/风级风向/湿度(0-1→%)、今日 UV(uvIndexMax,0-15)/AQI/灾害预警
+    // 全国内口径;实时失败整链回落高德/Open-Meteo,
+    // 逐日/空气/预警失败仅丢对应项(高低温沿用当前温度、UV 用实时的 uvIndex、AQI/预警隐藏)。
     // 增强链 FetchQWeatherEnhancementsAsync:高德/Open-Meteo 主源时只取 UV/AQI/风速三项,逐项回落。
     // 空气质量 indexes[] 中中国标准项 code 含 "cn"(如 cn-mep;没有时按 pollutants[] 浓度用 HJ 633-2012 自算)。
 
@@ -668,7 +670,8 @@ public sealed class WeatherService
             var nowTask = QwGetAsync(key, host, $"/weather/v1/current/{la}/{lo}");
             var dailyTask = QwGetAsync(key, host, $"/weather/v1/daily/{la}/{lo}?days=1");
             var aqTask = QwGetAsync(key, host, $"/airquality/v1/current/{la}/{lo}");
-            await Task.WhenAll(nowTask, dailyTask, aqTask);
+            var alertTask = QwGetAsync(key, host, $"/weatheralert/v1/current/{la}/{lo}");
+            await Task.WhenAll(nowTask, dailyTask, aqTask, alertTask);
             if (nowTask.Result is not { } cur) return null;
 
             string desc = cur.TryGetProperty("condition", out var cond) ? Str(cond, "text") : "";
@@ -724,8 +727,11 @@ public sealed class WeatherService
                 aqiLevel = aqi is { } v ? AqiLevel(v) : "—";
             }
 
+            var (alert, alertColor) = alertTask.Result is { } aw ? QwAlert(aw) : ("", "");
+
             return new WeatherInfo(temp.Value, desc, tmax, tmin, city,
-                windLvlTxt, windDir, windKmh, uv ?? 0, uvLevel, aqi, aqiLevel, humidity);
+                windLvlTxt, windDir, windKmh, uv ?? 0, uvLevel, aqi, aqiLevel, humidity,
+                alert.Length > 0 ? alert : null, alertColor);
         }
         catch
         {
@@ -786,6 +792,31 @@ public sealed class WeatherService
         {
             return null;
         }
+    }
+
+    /// <summary>alerts[] → 取颜色等级最高的一条活跃预警(messageType=cancel 跳过):
+    /// 标题 title/headline,缺失回落 eventType.name;无预警返回空串。</summary>
+    private static (string Title, string Color) QwAlert(JsonElement root)
+    {
+        string bestTitle = "", bestColor = "";
+        int bestRank = -1;
+        if (root.TryGetProperty("alerts", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var a in arr.EnumerateArray())
+            {
+                if (a.TryGetProperty("messageType", out var mt) && Str(mt, "code") == "cancel") continue;
+                string title = FirstNonEmpty(a, "title", "headline");
+                if (title.Length == 0 && a.TryGetProperty("eventType", out var ev)) title = Str(ev, "name");
+                if (title.Length == 0) continue;
+                string color = a.TryGetProperty("color", out var c) ? Str(c, "code") : "";
+                int rank = color.ToLowerInvariant() switch
+                {
+                    "red" => 5, "orange" => 4, "amber" => 3, "yellow" => 2, "blue" => 1, _ => 0,
+                };
+                if (rank > bestRank) { bestRank = rank; bestTitle = title; bestColor = color; }
+            }
+        }
+        return (bestTitle, bestColor);
     }
 
     /// <summary>daily[0].uvIndexMax(今日最大紫外线,0-15);缺失/非数字返回 null。</summary>

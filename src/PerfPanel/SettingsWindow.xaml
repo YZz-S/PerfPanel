@@ -184,7 +184,7 @@
                                 </Grid>
                                 <TextBlock x:Name="lblQwStatus" Text="留空 = 不启用(天气走高德/Open-Meteo,污染/UV/风速为估算)"
                                            Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                                <TextBlock Text="申请:dev.qweather.com 注册 → 控制台 → 项目管理 → 创建项目 → 创建凭据(身份认证方式 API KEY);API Host 在控制台首页复制。免费订阅约 5 万次/月,面板每次天气刷新用 3 次。"
+                                <TextBlock Text="申请:dev.qweather.com 注册 → 控制台 → 项目管理 → 创建项目 → 创建凭据(身份认证方式 API KEY);API Host 在控制台首页复制。免费订阅约 5 万次/月,面板每次天气刷新用 4 次(实况/逐日/空气/预警)。"
                                            FontSize="11" Foreground="#55648A" Margin="0,6,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
