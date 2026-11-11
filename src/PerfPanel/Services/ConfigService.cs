@@ -31,11 +31,17 @@ public sealed class AppConfig
     public string VolcSk { get; set; } = "";          // 火山引擎 Secret Access Key
     public string MimoCookie { get; set; } = "";      // MiMo 控制台 Cookie 头(须含 api-platform_serviceToken + userId;查余额与 Token Plan 用量)
     public string OpenCodeKey { get; set; } = "";     // OpenCode Go API Key(sk-,opencode.ai 控制台;查 Go 订阅 5h/周/月用量)
+    public string CommandCodeKey { get; set; } = "";  // CommandCode API Key(commandcode.ai Studio;GOAT 及以上套餐,查 /alpha 私有路由额度)
 
     // ---- LM Studio 本地推理 ----
     public bool ShowLmStudio { get; set; } = true;    // LM Studio 监控条(加载模型/并发调用/prefill·decode 速度)
     public int LmStudioPort { get; set; } = 1234;     // 本地服务端口(LM Studio 开发者页 → Server)
     public string LmStudioLogDir { get; set; } = "";  // 服务日志目录;空 = %USERPROFILE%\.lmstudio\server-logs
+
+    // ---- Strata 本地推理 ----
+    public bool ShowStrata { get; set; } = true;      // Strata 监控条(加载态/队列/prefill·decode 速度)
+    public int StrataPort { get; set; } = 8080;       // 引擎 API 端口(桌面端预设默认 8080;Web UI 的 47831 是另一套代理,不暴露这些端点)
+    public string StrataApiKey { get; set; } = "";    // 引擎 API Key(`strata launch --show-key` 可查;空 = 服务未设密钥)
 
     // ---- 便签 / 待办 ----
     public bool ShowNotes { get; set; } = true;       // 便签待办卡片(内容存 notes.json)

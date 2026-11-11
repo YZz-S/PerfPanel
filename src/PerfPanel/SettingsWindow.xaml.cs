@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using PerfPanel.Services;
@@ -15,7 +16,8 @@ public partial class SettingsWindow : Window
     private string[] _gpuNames = [];       // 下拉当前已填充的 GPU 列表(变化才重建,避免打断选择)
     private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
     private SecretField _secAmap = null!, _secDs = null!, _secZp = null!,
-                        _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!, _secOc = null!;
+                        _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!,
+                        _secOc = null!, _secCc = null!, _secStrata = null!;
 
     public SettingsWindow(MainWindow main)
     {
@@ -31,6 +33,7 @@ public partial class SettingsWindow : Window
         _secVolcSk = new SecretField(txtVolcSk, btnEyeVolcSk);
         _secMimo = new SecretField(txtMimoCookie, btnEyeMimo);
         _secOc = new SecretField(txtOcKey, btnEyeOc);
+        _secCc = new SecretField(txtCcKey, btnEyeCc);
         _secAmap.Init(c.AmapKey);
         _secDs.Init(c.DeepSeekKey);
         _secZp.Init(c.ZhipuKey);
@@ -38,6 +41,7 @@ public partial class SettingsWindow : Window
         _secVolcSk.Init(c.VolcSk);
         _secMimo.Init(c.MimoCookie);
         _secOc.Init(c.OpenCodeKey);
+        _secCc.Init(c.CommandCodeKey);
         txtCity.Text = c.City;
         SelectRefresh(c.WeatherRefreshMinutes);
         chkShowWeather.IsChecked = c.ShowWeather;
@@ -47,6 +51,10 @@ public partial class SettingsWindow : Window
         chkShowPlan.IsChecked = c.ShowCodingPlan;
         chkShowLmStudio.IsChecked = c.ShowLmStudio;
         txtLmsPort.Text = c.LmStudioPort.ToString();
+        _secStrata = new SecretField(txtStrataKey, btnEyeStrata);
+        _secStrata.Init(c.StrataApiKey);
+        chkShowStrata.IsChecked = c.ShowStrata;
+        txtStrataPort.Text = c.StrataPort.ToString();
         SelectOrientation(c.Orientation);
         sldScale.Value = c.Scale;
         lblScale.Text = $"{c.Scale * 100:F0}%";
@@ -221,6 +229,20 @@ public partial class SettingsWindow : Window
                 txtLmsPort.Text = Config.Current.LmStudioPort.ToString();
         };
 
+        chkShowStrata.Checked += (_, _) => { Apply(c => c.ShowStrata = true); _main.RefreshStrataCard(); };
+        chkShowStrata.Unchecked += (_, _) => { Apply(c => c.ShowStrata = false); _main.RefreshStrataCard(); };
+        txtStrataPort.LostFocus += (_, _) =>      // 非法端口回显旧值;轮询总是现取 Config.Current
+        {
+            if (int.TryParse(txtStrataPort.Text.Trim(), out var p) && p is > 0 and < 65536)
+                Apply(c => c.StrataPort = p);
+            else
+                txtStrataPort.Text = Config.Current.StrataPort.ToString();
+        };
+        txtStrataKey.LostFocus += (_, _) =>       // SecretField 失焦回打码后 Value 仍是改前/当前明文
+        {
+            Apply(c => c.StrataApiKey = _secStrata.Value.Trim());
+        };
+
         // ---- 监控 GPU:LHM 约 1s 后才枚举完,由 2s 状态定时器增量填充下拉 ----
         cmbGpu.SelectionChanged += (_, _) =>
         {
@@ -242,6 +264,7 @@ public partial class SettingsWindow : Window
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
         btnMimoTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Mimo);
         btnOcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.OpenCode);
+        btnCcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.CommandCode);
 
         sldScale.ValueChanged += (_, _) =>
         {
@@ -344,38 +367,107 @@ public partial class SettingsWindow : Window
 
     // ---- 密钥显隐 ----
 
-    /// <summary>可遮罩的密钥输入:真实明文只存在 Value 里(保存/回填用它),框内默认显示等长 ● 串(只读),
-    /// 点右缘眼睛钮临时切明文可编辑、失焦自动回打码。不用 PasswordBox——WPF 的 PasswordBox
-    /// PasswordChar='\0' 时显示空白,根本没有"显示真实文本"的明文模式。</summary>
+    /// <summary>可遮罩的密钥输入:真实明文只存在 Value 里(保存/回填用它),框内默认显示等长 ● 串。
+    /// 打码态也可直接编辑:点进框直接输入即整体替换重输(连续输入追加)、退格删尾字符、
+    /// 粘贴(Ctrl+V/右键菜单,经 Pasting 拦截)整体替换;想看/改中间几位时点右缘眼睛钮临时切明文,
+    /// 失焦自动回打码。不用 PasswordBox——WPF 的 PasswordBox PasswordChar='\0' 时显示空白,
+    /// 根本没有"显示真实文本"的明文模式。</summary>
     private sealed class SecretField(TextBox box, Button eye)
     {
         public string Value = "";
 
         private bool _reveal;
+        private bool _suppress;    // 程序性改 Text(打码/回显)时防 TextChanged 递归
+        private bool _freshEntry;  // 打码态下是否已开始重输(首键替换,后续键追加)
 
         public void Init(string value)
         {
             Value = value;
-            box.TextChanged += (_, _) => { if (_reveal) Value = box.Text; };  // 只在明文态吸收编辑
+            box.TextChanged += OnTextChanged;
+            box.PreviewTextInput += OnPreviewTextInput;
+            box.PreviewKeyDown += OnPreviewKeyDown;
+            DataObject.AddPastingHandler(box, OnPaste);      // 覆盖 Ctrl+V 与右键菜单两条粘贴路径
             box.LostFocus += (_, _) => SetReveal(false);
             eye.Click += (_, _) => SetReveal(!_reveal);
             SetReveal(false, value);
         }
 
+        // 明文态:常规编辑直接吸收;打码态:所见即 ● 串,输入已被前置事件接管,兜底防漏
+        private void OnTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_suppress) return;
+            if (_reveal) { Value = box.Text; return; }
+            _suppress = true;
+            box.Text = Mask(box.Text.Length);
+            box.CaretIndex = box.Text.Length;
+            _suppress = false;
+        }
+
+        // 打码态可见字符键一律收编:未动过的旧值在首键时整体替换,之后追加
+        private void OnPreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            if (_reveal) return;
+            e.Handled = true;
+            Value = _freshEntry ? Value + e.Text : e.Text;
+            _freshEntry = true;
+            _suppress = true;
+            box.Text = Mask(Value.Length);
+            box.CaretIndex = box.Text.Length;
+            _suppress = false;
+        }
+
+        private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (_reveal) return;
+            switch (e.Key)
+            {
+                case Key.Back:
+                case Key.Delete:
+                    e.Handled = true;
+                    if (e.Key == Key.Back)
+                        Value = Value.Length > 0 ? Value[..^1] : "";
+                    else
+                        Value = "";                      // 打码下 Delete 删首字符无从定位,视为清空重输
+                    _freshEntry = true;
+                    _suppress = true;
+                    box.Text = Mask(Value.Length);
+                    box.CaretIndex = box.Text.Length;
+                    _suppress = false;
+                    break;
+                case Key.X when Keyboard.Modifiers == ModifierKeys.Control:
+                    e.Handled = true;                    // 打码下剪切只会剪到 ●,直接禁用防混淆
+                    break;
+            }
+        }
+
+        // 打码态粘贴:剪贴板整段文本整体替换(密钥常带结尾换行,统一 Trim)
+        private void OnPaste(object sender, DataObjectPastingEventArgs e)
+        {
+            if (_reveal) return;
+            e.CancelCommand();
+            if (!e.DataObject.GetDataPresent(DataFormats.Text)) return;
+            Value = ((string)e.DataObject.GetData(DataFormats.Text) ?? "").Trim();
+            _freshEntry = true;
+            _suppress = true;
+            box.Text = Mask(Value.Length);
+            box.CaretIndex = box.Text.Length;
+            _suppress = false;
+        }
+
         private void SetReveal(bool reveal, string? value = null)
         {
             _reveal = reveal;
+            _freshEntry = false;                         // 显隐切换后打码态编辑重新开始(下一键替换重输)
             if (value != null) Value = value;
-            box.IsReadOnly = !reveal;
-            box.Text = reveal ? Value : new string('●', Value.Length);
+            box.Text = reveal ? Value : Mask(Value.Length);
+            box.CaretIndex = box.Text.Length;            // 聚焦时光标到尾:打码态可直接退格/输入
             if (reveal)
-            {
                 box.Focus();
-                box.CaretIndex = box.Text.Length;
-            }
             eye.Content = reveal ? "🙈" : "👁";
-            eye.ToolTip = reveal ? "点击隐藏密钥" : "点击显示密钥";
+            eye.ToolTip = reveal ? "点击隐藏(回打码)" : "点击显示明文;打码态也可直接输入(输入即替换)、退格删除";
         }
+
+        private static string Mask(int n) => new('●', n);
     }
 
     // ---- 监控 GPU ----
@@ -551,7 +643,7 @@ public partial class SettingsWindow : Window
         return dest;
     }
 
-    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo, OpenCode }
+    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo, OpenCode, CommandCode }
 
     /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
     private async Task SaveAndTestPlanAsync(PlanKind kind)
@@ -565,6 +657,7 @@ public partial class SettingsWindow : Window
             case PlanKind.Zhipu: key = _secZp.Value.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
             case PlanKind.Mimo: key = _secMimo.Value.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
             case PlanKind.OpenCode: key = _secOc.Value.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
+            case PlanKind.CommandCode: key = _secCc.Value.Trim(); c.CommandCodeKey = key; btn = btnCcTest; break;
             default: ak = _secVolcAk.Value.Trim(); sk = _secVolcSk.Value.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
         }
         Config.Save();
@@ -592,6 +685,7 @@ public partial class SettingsWindow : Window
                 PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
                 PlanKind.Mimo => await _main.CodingPlan.QueryMimoAsync(key),
                 PlanKind.OpenCode => await _main.CodingPlan.QueryOpenCodeAsync(key),
+                PlanKind.CommandCode => await _main.CodingPlan.QueryCommandCodeAsync(key),
                 _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
             };
             string msg = r.Ok

@@ -337,9 +337,11 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="风速" Style="{StaticResource RowLabelStyle}"/>
+                                    <TextBlock Text="风" Style="{StaticResource RowLabelStyle}"/>
                                     <TextBlock x:Name="txtWind" Text="--" FontSize="15" FontWeight="Bold"
                                                FontFamily="Consolas" Foreground="#E8EFFC" Margin="0,2,0,0"/>
+                                    <TextBlock x:Name="txtWindSpeed" Text="" Visibility="Collapsed" FontSize="12"
+                                               FontFamily="Consolas" Foreground="#9BB0D6" Margin="0,1,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="紫外线" Style="{StaticResource RowLabelStyle}"/>
@@ -361,6 +363,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid Grid.Row="0">
@@ -401,6 +404,35 @@
                                                        FontFamily="Consolas" Foreground="#FBBF24" VerticalAlignment="Center"/>
                                         </Grid>
                                         <TextBlock x:Name="txtLmsSpeed" Text="" FontSize="12" FontFamily="Consolas"
+                                                   Margin="17,4,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Strata:模型加载态 / 排队请求数 / prefill·decode 速度(数据取自引擎本机 API /health·/status·/metrics) -->
+                                <Border x:Name="rowStrata" Grid.Row="3" Visibility="Collapsed" Margin="0,8,0,0"
+                                        Padding="10,7" CornerRadius="8" Background="{DynamicResource CardInnerBrush}">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="dotStrata" Width="7" Height="7" VerticalAlignment="Center" Fill="#55648A"/>
+                                                <TextBlock Text="STRATA" FontSize="11" FontWeight="Bold" Foreground="#8FA3C8"
+                                                           FontFamily="Consolas" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="txtStrataState" Text="" FontSize="11" Foreground="#55648A"
+                                                           Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <!-- 横屏:模型名挤进标题行(竖屏在速度行里展示),保证额度图例不被挤出可视区 -->
+                                            <TextBlock x:Name="txtStrataModel" Grid.Column="1" Text="" FontSize="11" FontFamily="Consolas"
+                                                       Foreground="#8FA3C8" Margin="10,0,8,0" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                                            <TextBlock x:Name="txtStrataQueue" Grid.Column="2" Text="" FontSize="12" FontWeight="Bold"
+                                                       FontFamily="Consolas" Foreground="#FBBF24" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <TextBlock x:Name="txtStrataSpeed" Text="" FontSize="12" FontFamily="Consolas"
                                                    Margin="17,4,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>

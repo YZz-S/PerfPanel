@@ -26,15 +26,16 @@ public sealed record PlanStatus
     public string? StaleError { get; init; }
 }
 
-/// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、智谱 GLM(非官方)、火山方舟(非官方)、
-/// Xiaomi MiMo(控制台 Cookie:按量付费余额 + Token Plan 用量)、OpenCode Go(sk- API Key)。
+/// <summary>Coding Plan 额度服务:DeepSeek 余额(官方)、火山方舟与智谱 GLM(非官方)、
+/// Xiaomi MiMo(控制台 Cookie:按量付费余额 + Token Plan 用量)、OpenCode Go(sk- API Key)、
+/// CommandCode GOAT 等套餐(官方 CLI 的 /alpha 私有路由)。
 /// 刷新失败保留上次成功值;各供应商相互独立容错。</summary>
 public sealed class CodingPlanService
 {
     public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(15);
 
     /// <summary>全部已知供应商(PlanStatus.Name 口径),同时是默认显示顺序。</summary>
-    public static readonly string[] ProviderNames = ["DeepSeek", "GLM", "MiMo", "火山方舟", "OpenCode Go"];
+    public static readonly string[] ProviderNames = ["DeepSeek", "GLM", "MiMo", "火山方舟", "OpenCode Go", "CommandCode"];
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private readonly Dictionary<string, PlanStatus> _last = [];
@@ -57,6 +58,7 @@ public sealed class CodingPlanService
                 || !string.IsNullOrWhiteSpace(c.ZhipuKey)
                 || !string.IsNullOrWhiteSpace(c.MimoCookie)
                 || !string.IsNullOrWhiteSpace(c.OpenCodeKey)
+                || !string.IsNullOrWhiteSpace(c.CommandCodeKey)
                 || (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk));
         }
     }
@@ -72,6 +74,7 @@ public sealed class CodingPlanService
         if (!string.IsNullOrWhiteSpace(c.VolcAk) && !string.IsNullOrWhiteSpace(c.VolcSk))
             queries.Add(QueryVolcAsync(c.VolcAk.Trim(), c.VolcSk.Trim()));
         if (!string.IsNullOrWhiteSpace(c.OpenCodeKey)) queries.Add(QueryOpenCodeAsync(c.OpenCodeKey.Trim()));
+        if (!string.IsNullOrWhiteSpace(c.CommandCodeKey)) queries.Add(QueryCommandCodeAsync(c.CommandCodeKey.Trim()));
 
         if (queries.Count > 0)
         {
@@ -507,6 +510,194 @@ public sealed class CodingPlanService
         return null;
     }
 
+    // ==================== CommandCode(GOAT 等套餐;官方 CLI 私有路由) ====================
+    // /alpha/* 是 CommandCode 官方 CLI 内部使用、未公开文档化的账户路由(推理网关 /provider/v1/* 不提供额度查询)。
+    // 端点与字段口径照 cc-switch(farion1231/cc-switch,Rust)实测复刻:
+    //   1 GET /alpha/whoami?limits=1                    → org.id(后续请求都要 orgId)
+    //   2 GET /alpha/billing/credits?orgId=             → credits.{monthly,purchased,free}Credits(剩余池)
+    //                                                   + windowLimits.{limited, fiveHour/weekly.{used,cap,resetAt}}
+    //   3 GET /alpha/billing/subscriptions?orgId=       → data.{planId,currentPeriodStart,currentPeriodEnd}
+    //   4 GET /alpha/usage/summary?since={periodStart}&orgId= → totalCost(当前周期已花费,美元)
+    // 口径同 cc-switch:5h/周 utilization = used/cap(limited=false 的纯按量无滚动窗口);
+    // 月 utilization = totalCost ÷ 三池之和(credits 池不参与滚动窗口,只算月度);resetAt 兼容 ISO/秒/毫秒时间戳。
+
+    private const string CommandCodeApiBase = "https://api.commandcode.ai";
+
+    private sealed record CcReply(bool Ok, JsonElement Body, string? Error = null);
+
+    public async Task<PlanStatus> QueryCommandCodeAsync(string key)
+    {
+        try
+        {
+            // 1) whoami 取 org.id —— orgId 可选:个人 Key 的 whoami 常无 org,此时省略该参数直接查(cc-switch 同款语义)
+            var who = await CcGetAsync(key, "/alpha/whoami?limits=1");
+            if (!who.Ok) return Err("CommandCode", who.Error ?? "whoami 查询失败");
+            string orgId = CcOrgId(who.Body);
+
+            // 2)+3) credits(必需,决定错误档位)与订阅(可选,提供周期与 planId)并行;since 依赖订阅周期
+            string Q(params string[] pairs)
+            {
+                var vals = new List<string>();
+                if (orgId.Length > 0) vals.Add($"orgId={Uri.EscapeDataString(orgId)}");
+                vals.AddRange(pairs.Where(p => p.Length > 0));
+                return vals.Count > 0 ? "?" + string.Join("&", vals) : "";
+            }
+            var creditsTask = CcGetAsync(key, "/alpha/billing/credits" + Q());
+            var subsTask = CcGetAsync(key, "/alpha/billing/subscriptions" + Q());
+            await Task.WhenAll(creditsTask, subsTask);
+            var credits = creditsTask.Result;
+            if (!credits.Ok) return Err("CommandCode", credits.Error ?? "billing/credits 查询失败");
+
+            string periodStart = "", planId = "";
+            DateTime? periodEnd = null;
+            var subs = subsTask.Result;
+            if (subs.Ok && subs.Body.TryGetProperty("data", out var sub) && sub.ValueKind == JsonValueKind.Object)
+            {
+                periodStart = CcPathStr(sub, "currentPeriodStart");
+                periodEnd = TryReset(sub, "currentPeriodEnd");
+                planId = CcPathStr(sub, "planId");
+            }
+
+            var summary = await CcGetAsync(key, "/alpha/usage/summary" + Q(
+                periodStart.Length > 0 ? $"since={Uri.EscapeDataString(periodStart)}" : ""));
+            if (!summary.Ok) return Err("CommandCode", summary.Error ?? "usage/summary 查询失败");
+
+            return ParseCommandCodeUsage(credits.Body, summary.Body, planId, periodEnd);
+        }
+        catch (Exception ex)
+        {
+            return Err("CommandCode", $"网络错误:{ex.Message}");
+        }
+    }
+
+    /// <summary>org.id 探测:org.id(data 信封包裹的 data.org.id 兜底),字符串/数字双兼容;
+    /// 缺失返回空串(调用方省略 orgId 参数,cc-switch 同款语义)。</summary>
+    private static string CcOrgId(JsonElement root)
+    {
+        string s = CcPathStr(root, "org", "id");
+        if (s.Length == 0) s = CcPathStr(root, "data", "org", "id");
+        return s;
+    }
+
+    /// <summary>GET /alpha 路由:Bearer Key + Accept JSON;401/403 直接给鉴权提示。</summary>
+    private async Task<CcReply> CcGetAsync(string key, string pathAndQuery)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{CommandCodeApiBase}{pathAndQuery}");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                return new CcReply(false, default, $"鉴权失败(HTTP {(int)resp.StatusCode}),请检查 API Key(commandcode.ai › Studio › API Keys)");
+            if (!resp.IsSuccessStatusCode)
+                return new CcReply(false, default, $"API 错误(HTTP {(int)resp.StatusCode}):{pathAndQuery.Split('?')[0]}");
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement.Clone();
+            // /alpha 信封为 {success, error{code,message}};HTTP 200 携带的业务错误也在此识别
+            if (root.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.False &&
+                root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.Object)
+            {
+                string em = Str(e, "message");
+                if (em.Length == 0) em = Str(e, "code");
+                return new CcReply(false, default, $"API 错误:{(em.Length > 0 ? em : "未知错误")}");
+            }
+            // 诊断落盘:非官方文档路由,响应结构若有变动可据此核对(格式同 volc-last-response.json)
+            string slot = pathAndQuery.Split('?')[0].Replace("/alpha/", "").Replace('/', '_');
+            DumpCc(slot, root);
+            return new CcReply(true, root);
+        }
+        catch (Exception ex)
+        {
+            return new CcReply(false, default, $"网络错误:{ex.Message}");
+        }
+    }
+
+    /// <summary>解析 credits + summary:窗口顺序为余额(剩余池,标题主值) → 5h/周(limited≠false 且 cap>0) → 月。
+    /// 多余字段只取认识的部分(宽松解析,防 /alpha 字段增减);credits 池取值口径与 cc-switch 一致。</summary>
+    internal static PlanStatus ParseCommandCodeUsage(
+        JsonElement creditsRoot, JsonElement summaryRoot, string planId, DateTime? periodEnd)
+    {
+        var credit = creditsRoot.TryGetProperty("credits", out var cr) && cr.ValueKind == JsonValueKind.Object
+            ? cr : creditsRoot;
+        double pool = Math.Max(0, ParseD(credit, "monthlyCredits"))
+                    + Math.Max(0, ParseD(credit, "purchasedCredits"))
+                    + Math.Max(0, ParseD(credit, "freeCredits"));
+        if (planId.Length == 0) planId = CcPathStr(credit, "planId");
+
+        // windowLimits 实测在 credits 同级;兼容嵌在 credits 层下两种形态
+        var wl = creditsRoot.TryGetProperty("windowLimits", out var wl1) && wl1.ValueKind == JsonValueKind.Object ? wl1
+               : credit.TryGetProperty("windowLimits", out var wl2) && wl2.ValueKind == JsonValueKind.Object ? wl2
+               : default;
+
+        if (!summaryRoot.TryGetProperty("totalCost", out var tc))
+            return Err("CommandCode", "usage/summary 响应缺少 totalCost 字段(字段口径可能有变)");
+        double spent = ParseD2(tc);
+
+        var windows = new List<QuotaWindow>();
+        // limited=false 明确是纯按量(如 Provider 套餐,无滚动窗口);字段缺失或 true 时按窗口节点存在性解析
+        bool paygOnly = wl.ValueKind == JsonValueKind.Object
+            && wl.TryGetProperty("limited", out var lim) && lim.ValueKind == JsonValueKind.False;
+        if (!paygOnly)
+        {
+            foreach (var (key, label) in new[] { ("fiveHour", "5h"), ("weekly", "周") })
+            {
+                if (!(wl.ValueKind == JsonValueKind.Object && wl.TryGetProperty(key, out var win)
+                      && win.ValueKind == JsonValueKind.Object)) continue;
+                double cap = ParseD(win, "cap");
+                if (cap <= 0) continue;                      // 未配置/未生效的窗口跳过
+                double used = ParseD(win, "used");
+                DateTime? reset = win.TryGetProperty("resetAt", out var ra) ? ParseResetTime(ra) : null;
+                windows.Add(new QuotaWindow(label, Math.Clamp(used / cap * 100.0, 0, 100), null, null, reset));
+            }
+        }
+
+        // 月度:额度池 = 三类 credits 之和,已花 = totalCost,重置点 = 订阅周期截止
+        if (pool > 0)
+            windows.Add(new QuotaWindow("月", Math.Clamp(spent / pool * 100.0, 0, 100), null, null, periodEnd));
+
+        if (windows.Count == 0)
+            return Err("CommandCode", "credits 池为 0 且无滚动窗口(套餐可能未生效,检查 Studio › Billing)");
+
+        string planName = CcPlanLabel(planId);
+        if (pool > 0)
+            return Ok("CommandCode",
+                new[] { new QuotaWindow("余额", null, pool, null, null) }.Concat(windows).ToList(),
+                planName, "USD");
+        return Ok("CommandCode", windows, planName, null);
+    }
+
+    /// <summary>订阅/credits 返回的 planId → 面板显示名(未知原样显示)。</summary>
+    private static string CcPlanLabel(string planId) => planId.ToLowerInvariant() switch
+    {
+        "" or "unknown" => "",
+        "go" => "Go",
+        "goat" => "GOAT",
+        "pro" => "Pro",
+        "max10" or "max_10x" or "max-10x" => "Max 10x",
+        "max20" or "max_20x" or "max-20x" => "Max 20x",
+        "provider" => "Provider",
+        var s => s,
+    };
+
+    /// <summary>按路径取字段,返回字符串形态(org.id 数字/字符串双兼容,数字用 raw 文本保留精度)。</summary>
+    private static string CcPathStr(JsonElement obj, params string[] path)
+    {
+        var cur = obj;
+        foreach (var p in path)
+        {
+            if (cur.ValueKind != JsonValueKind.Object || !cur.TryGetProperty(p, out var next))
+                return "";
+            cur = next;
+        }
+        return cur.ValueKind switch
+        {
+            JsonValueKind.String => cur.GetString() ?? "",
+            JsonValueKind.Number => cur.GetRawText(),
+            _ => "",
+        };
+    }
+
     // ==================== 火山方舟 Agent/Coding Plan(非官方) ====================
     // 控制面 OpenAPI(非推理域名),需火山引擎 AK/SK 签名 V4(推理 API Key 无法使用):
     // POST https://open.volcengineapi.com/?Action=GetAFPUsage&Region=cn-beijing&Version=2024-01-01
@@ -697,13 +888,22 @@ public sealed class CodingPlanService
     /// <summary>把火山 OpenAPI 最近一次成功响应落盘到 exe 旁 volc-last-response.json
     /// (结构:{updatedAt, GetAFPUsage, GetCodingPlanUsage})。非官方接口字段若有变动,
     /// 可据此核对真实字段名。失败静默,不影响查询。</summary>
-    private static void DumpVolcBody(string action, JsonElement body)
+    private static void DumpVolcBody(string action, JsonElement body) =>
+        DumpJsonBody("volc-last-response.json", action, body);
+
+    /// <summary>把 CommandCode /alpha 最近一次成功响应落盘到 exe 旁 cc-last-response.json
+    /// (结构:{updatedAt, whoami, billing_credits, billing_subscriptions, usage_summary})。</summary>
+    private static void DumpCc(string slot, JsonElement body) =>
+        DumpJsonBody("cc-last-response.json", slot, body);
+
+    /// <summary>合并落盘:保留文件里其他端点条目,仅覆盖本槽位与 updatedAt 时间戳。</summary>
+    private static void DumpJsonBody(string fileName, string slot, JsonElement body)
     {
         try
         {
             lock (_dumpLock)
             {
-                string path = Path.Combine(AppContext.BaseDirectory, "volc-last-response.json");
+                string path = Path.Combine(AppContext.BaseDirectory, fileName);
                 var map = new Dictionary<string, JsonElement>();
                 if (File.Exists(path))
                 {
@@ -717,7 +917,7 @@ public sealed class CodingPlanService
                     }
                     catch { }
                 }
-                map[action] = body;
+                map[slot] = body;
                 map["updatedAt"] = JsonSerializer.SerializeToElement(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 File.WriteAllText(path,
                     JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));

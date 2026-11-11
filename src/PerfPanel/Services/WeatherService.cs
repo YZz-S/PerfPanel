@@ -5,12 +5,32 @@ using PerfPanel.Services;
 
 namespace PerfPanel.Services;
 
+/// <summary>风级以原始文本承载(支持高德「≤3」),风速只在 Open-Meteo 提供真实值时才有数(高德不编 km/h)。</summary>
 public sealed record WeatherInfo(
     double TempC, string Desc, double TMax, double TMin, string City,
-    int WindLevel, double WindSpeedKmh,
+    string WindLevelTxt, string WindDir, double? WindSpeedKmh,
     double UvIndex, string UvLevel,
     int? Aqi, string AqiLevel,
-    int? HumidityPct = null);
+    int? HumidityPct = null)
+{
+    public int WindLevel =>
+        int.TryParse(WindLevelTxt.Trim().TrimStart('≤', '<'), out var v) ? v : 0;
+
+    /// <summary>风行文案:「≤3级·南风」,空段跳过。</summary>
+    public string WindLabel
+    {
+        get
+        {
+            string lvl = WindLevelTxt.Trim();
+            if (lvl.Length > 0 && !lvl.EndsWith("级") && char.IsDigit(lvl[^1])) lvl += "级";
+            if (lvl.Length == 0 && WindLevel > 0) lvl = WindLevel + "级";
+            string dir = WindDir.Trim();
+            if (dir.Length > 0 && !dir.EndsWith("风")) dir += "风";
+            string main = lvl.Length > 0 && dir.Length > 0 ? $"{lvl}·{dir}" : lvl + dir;
+            return main.Length > 0 ? main : "--";
+        }
+    }
+}
 
 /// <summary>天气服务:双数据源。
 /// 有高德 Key → 高德实况+预报(国内稳定,地址级定位),UV/AQI 用 Open-Meteo 增强;
@@ -56,7 +76,7 @@ public sealed class WeatherService
     {
         if (HasAmap)
         {
-            var g = await AmapGeocodeAsync(name);
+            var g = await AmapGeocodeAsync(NormalizeManualAddress(name));
             if (g != null)
             {
                 Config.Current.City = g.City;
@@ -136,7 +156,8 @@ public sealed class WeatherService
             double temp = ParseD(l, "temperature");
             string desc = Str(l, "weather");
             int? humidity = ParseN(l, "humidity");
-            int windLevel = ParseWindLevel(l);
+            string windRaw = Str(l, "windpower");        // 「3」/「≤3」原样展示,不取区间中值
+            string windDir = Str(l, "winddirection");
             // 预报取今日高低温
             double tmax = temp, tmin = temp;
             try
@@ -151,12 +172,12 @@ public sealed class WeatherService
             }
             catch { }
 
-            // UV / AQI 增强(Open-Meteo,失败隐藏)
-            var (uv, uvLevel, aqi, aqiLevel) = await FetchEnhancementsAsync(lat, lon);
+            // UV / AQI / 真实风速增强(Open-Meteo,失败降级:UV与AQI隐藏,风速缺省致 UI 不显示 km/h)
+            var (uv, uvLevel, aqi, aqiLevel, omWind) = await FetchEnhancementsAsync(lat, lon);
 
             string label = string.IsNullOrEmpty(city) ? Str(l, "city") : city;
             return new WeatherInfo(temp, desc, tmax, tmin, label,
-                windLevel, BeaufortMidKmh(windLevel), uv, uvLevel, aqi, aqiLevel, humidity);
+                windRaw, windDir, omWind, uv, uvLevel, aqi, aqiLevel, humidity);
         }
     }
 
@@ -165,17 +186,18 @@ public sealed class WeatherService
     {
         string manual = Config.Current.City.Trim();
 
+        if (manual.Length > 0)
+        {
+            // 手动城市优先重新地理编码,避免市级/失败的陈旧缓存被长期沿用(缓存仅作编码失败回退)
+            var g = await AmapGeocodeAsync(NormalizeManualAddress(manual));
+            if (g != null) return (g.Lat, g.Lon, g.City, g.Adcode ?? "");
+        }
+
         if (TryReadCache(out var cLat, out var cLon, out var cCity, out var cAdcode) &&
             !string.IsNullOrEmpty(cAdcode))
         {
             string label = manual.Length > 0 ? manual : cCity;
             return (cLat, cLon, label, cAdcode);
-        }
-
-        if (manual.Length > 0)
-        {
-            var g = await AmapGeocodeAsync(manual);
-            if (g != null) return (g.Lat, g.Lon, g.City, g.Adcode ?? "");
         }
 
         try
@@ -199,6 +221,21 @@ public sealed class WeatherService
         catch { }
 
         return (FallbackLat, FallbackLon, "北京", FallbackAdcode);
+    }
+
+    /// <summary>手动地址纠形:「朝阳区·北京市」的 · 是展示分隔不是地址,
+    /// 还原为「北京市朝阳区」(行政级别大的在前),否则高德会解析失败或落到市级。</summary>
+    public static string NormalizeManualAddress(string name)
+    {
+        string trimmed = name.Trim();
+        var parts = trimmed.Split('·', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length <= 1) return trimmed;
+        // 省/市这类高级单位排前(Amap 上级在前解析最准)
+        var ordered = parts.OrderByDescending(Rank).ToArray();
+        static int Rank(string s) =>
+            s.Contains("自治区") ? 3 : (s.Contains("省") || s.Contains("市") || s.Contains("州")) ? 2 :
+            (s.Contains("区") || s.Contains("县") || s.Contains("旗")) ? 1 : 0;
+        return string.Concat(ordered);
     }
 
     /// <summary>高德地理编码:支持"北京市朝阳区垡头街道"级别的详细地址。</summary>
@@ -240,7 +277,7 @@ public sealed class WeatherService
         (double lat, double lon, string city) = await ResolveLocationAsync();
 
         var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
-                  "&current=temperature_2m,weather_code,wind_speed_10m" +
+                  "&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m" +
                   "&hourly=uv_index&forecast_hours=1" +
                   "&daily=temperature_2m_max,temperature_2m_min" +
                   "&timezone=auto&forecast_days=1";
@@ -250,13 +287,15 @@ public sealed class WeatherService
         double temp = cur.GetProperty("temperature_2m").GetDouble();
         int code = cur.GetProperty("weather_code").GetInt32();
         double windKmh = cur.GetProperty("wind_speed_10m").GetDouble();
+        string windDir = cur.TryGetProperty("wind_direction_10m", out var wdir)
+            ? DegToCnDir(wdir.GetDouble()) : "";
         double uv = root.GetProperty("hourly").GetProperty("uv_index")[0].GetDouble();
         double tmax = root.GetProperty("daily").GetProperty("temperature_2m_max")[0].GetDouble();
         double tmin = root.GetProperty("daily").GetProperty("temperature_2m_min")[0].GetDouble();
 
         var (aqi, aqiLevel) = await FetchAirQualityAsync(lat, lon);
         return new WeatherInfo(temp, WmoDescription(code), tmax, tmin, city,
-            Beaufort(windKmh), windKmh, uv, UvLevel(uv), aqi, aqiLevel);
+            Beaufort(windKmh).ToString(), windDir, windKmh, uv, UvLevel(uv), aqi, aqiLevel);
     }
 
     // ---------- OM 定位链:手动城市 → 缓存 → IP(ipapi→ipwho.is)→ 反查中文 ----------
@@ -454,7 +493,7 @@ public sealed class WeatherService
 
     // ==================== 增强项(UV / AQI,均容错) ====================
 
-    private async Task<(double uv, string uvLevel, int? aqi, string aqiLevel)> FetchEnhancementsAsync(double lat, double lon)
+    private async Task<(double uv, string uvLevel, int? aqi, string aqiLevel, double? windKmh)> FetchEnhancementsAsync(double lat, double lon)
     {
         double uv = 0;
         string uvLevel = "—";
@@ -468,8 +507,20 @@ public sealed class WeatherService
         }
         catch { }
 
+        // 真实 10m 风速,单独特容(高德源只有风级,不编 km/h)
+        double? wind = null;
+        try
+        {
+            var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
+                      "&current=wind_speed_10m&timezone=auto";
+            using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
+            double v = doc.RootElement.GetProperty("current").GetProperty("wind_speed_10m").GetDouble();
+            if (v >= 0) wind = v;
+        }
+        catch { }
+
         var (aqi, aqiLevel) = await FetchAirQualityAsync(lat, lon);
-        return (uv, uvLevel, aqi, aqiLevel);
+        return (uv, uvLevel, aqi, aqiLevel, wind);
     }
 
     private async Task<(int? aqi, string level)> FetchAirQualityAsync(double lat, double lon)
@@ -477,15 +528,63 @@ public sealed class WeatherService
         try
         {
             var url = $"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat:F4}&longitude={lon:F4}" +
-                      "&current=us_aqi&timezone=auto";
+                      "&current=pm2_5,pm10,ozone,nitrogen_dioxide,carbon_monoxide,sulphur_dioxide&timezone=auto";
             using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
-            int aqi = (int)Math.Round(doc.RootElement.GetProperty("current").GetProperty("us_aqi").GetDouble());
+            var cur = doc.RootElement.GetProperty("current");
+            int aqi = CnAqi(
+                Opt(cur, "pm2_5"), Opt(cur, "pm10"), Opt(cur, "ozone"),
+                Opt(cur, "nitrogen_dioxide"), Opt(cur, "carbon_monoxide"), Opt(cur, "sulphur_dioxide"));
             return (aqi, AqiLevel(aqi));
         }
         catch
         {
             return (null, "");
         }
+    }
+
+    private static double? Opt(JsonElement obj, string prop) =>
+        obj.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number
+            ? v.GetDouble() : null;
+
+    // ---------- 中国标准 AQI(HJ 633-2012) ----------
+    // Open-Meteo 无现成 cn_aqi,按污染物浓度用 HJ633 断点表自算 IAQI 取最大值。
+    // 实时发布近似:小时代入 PM 的 24h 断点(监测网络通用做法),NO2/SO2/CO/O3 用 1h 断点。
+
+    private static readonly (double Cut, int Ia)[] Pm25Bps =
+        { (35,50),(75,100),(115,150),(150,200),(250,300),(350,400),(500,500) };
+    private static readonly (double Cut, int Ia)[] Pm10Bps =
+        { (50,50),(150,100),(250,150),(350,200),(420,300),(500,400),(600,500) };
+    private static readonly (double Cut, int Ia)[] O3Bps =
+        { (160,50),(200,100),(300,150),(400,200),(800,300),(1000,400),(1200,500) };      // 1h
+    private static readonly (double Cut, int Ia)[] No2Bps =
+        { (100,50),(200,100),(700,150),(1200,200),(2340,300),(3090,400),(3840,500) };    // 1h
+    private static readonly (double Cut, int Ia)[] CoBps =
+        { (10,50),(35,100),(60,150),(90,200),(120,300),(150,400),(180,500) };            // 1h, mg/m³
+    private static readonly (double Cut, int Ia)[] So2Bps =
+        { (150,50),(500,100),(650,150),(800,200),(1600,300),(2650,400),(3850,500) };     // 1h
+
+    private static int Iaqi((double Cut, int Ia)[] bps, double c)
+    {
+        double cLow = 0, iLow = 0;
+        foreach (var (cut, ia) in bps)
+        {
+            if (c <= cut)
+                return (int)Math.Round((c - cLow) / (cut - cLow) * (ia - iLow) + iLow);
+            cLow = cut; iLow = ia;
+        }
+        return bps[^1].Ia; // 超表封顶(500,仍属严重污染)
+    }
+
+    private static int CnAqi(double? pm25, double? pm10, double? o3, double? no2, double? coUgM3, double? so2)
+    {
+        int best = 0;
+        void Take(double? v, (double Cut, int Ia)[] bps, double div = 1)
+        {
+            if (v is { } x && x >= 0 && double.IsFinite(x)) best = Math.Max(best, Iaqi(bps, x / div));
+        }
+        Take(pm25, Pm25Bps); Take(pm10, Pm10Bps); Take(o3, O3Bps);
+        Take(no2, No2Bps); Take(coUgM3, CoBps, 1000); Take(so2, So2Bps);
+        return best; // 浓度全可用时为 0 的可能性仅限全部接近 0,正常不会触发
     }
 
     // ==================== 缓存与工具 ====================
@@ -542,21 +641,13 @@ public sealed class WeatherService
     private static int? ParseN(JsonElement obj, string prop) =>
         int.TryParse(Str(obj, prop), out var v) ? v : null;
 
-    /// <summary>高德 windpower 形如 "3" 或 "≤3",取数字风级。</summary>
-    private static int ParseWindLevel(JsonElement obj)
+    /// <summary>风向角(风来的方向,0=北)→ 中文八方;非法角度返回空(不显示)。</summary>
+    private static string DegToCnDir(double deg)
     {
-        var s = Str(obj, "windpower");
-        int start = 0;
-        while (start < s.Length && !char.IsDigit(s[start])) start++;
-        return int.TryParse(s.AsSpan(start), out var lv) ? lv : 0;
+        if (double.IsNaN(deg) || deg < -360 || deg > 360) return "";
+        string[] dirs = { "北", "东北", "东", "东南", "南", "西南", "西", "西北" };
+        return dirs[(((int)Math.Round(deg / 45.0) % 8) + 8) % 8];
     }
-
-    /// <summary>风级 → 区间代表风速(km/h)。</summary>
-    private static double BeaufortMidKmh(int level) => level switch
-    {
-        0 => 0.5, 1 => 3, 2 => 8, 3 => 15, 4 => 24, 5 => 33,
-        6 => 44, 7 => 55, 8 => 68, 9 => 81, 10 => 95, 11 => 110, _ => 125,
-    };
 
     private static (double lon, double lat) ParseLocation(string s)
     {

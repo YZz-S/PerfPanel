@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly WeatherService _weather = new();
     private readonly CodingPlanService _codingPlan = new();
     private readonly LmStudioService _lmStudio = new();
+    private readonly StrataService _strata = new();
     private static readonly TimeSpan LmsRotate = TimeSpan.FromSeconds(3);   // 多模型轮播间隔
     private readonly NotesService _notes = NotesService.Instance;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -53,6 +54,9 @@ public partial class MainWindow : Window
 
     /// <summary>设置窗口访问面板内部的 LM Studio 监控服务。</summary>
     public LmStudioService LmStudio => _lmStudio;
+
+    /// <summary>设置窗口访问面板内部的 Strata 监控服务。</summary>
+    public StrataService Strata => _strata;
 
     /// <summary>设置窗口访问传感器聚合器(GPU 列表与切换)。</summary>
     public MonitorAggregator Aggregator => _agg;
@@ -119,6 +123,7 @@ public partial class MainWindow : Window
         _ = WeatherLoopAsync();
         _ = CodingPlanLoopAsync();
         _ = LmStudioLoopAsync();
+        _ = StrataLoopAsync();
 
         // 全屏模式:启动后 2s/6s 两次重新贴屏(纠正 DPI 切换导致的窗口缩水),并周期性重申置顶,
         // 保证开机自启动后面板始终铺满副屏、不被任务栏盖住底部
@@ -834,7 +839,7 @@ public partial class MainWindow : Window
             txtWeatherRange.Text = "";
             txtWeatherCity.Text = "获取位置/天气中…";
             StartBreathing(txtWeatherCity);
-            txtWind.Text = "--"; txtUv.Text = "--";
+            txtWind.Text = "--"; txtWindSpeed.Visibility = Visibility.Collapsed; txtUv.Text = "--";
             cellAqi.Visibility = Visibility.Collapsed;
             return;
         }
@@ -849,7 +854,17 @@ public partial class MainWindow : Window
         int remain = (int)Math.Ceiling((_weather.NextRefreshUtc - DateTime.UtcNow).TotalMinutes);
         txtWeatherCity.Text = remain > 0 ? $"{loc} · {remain}分钟后刷新" : $"{loc} · 刷新中…";
 
-        txtWind.Text = $"{w.WindLevel}级 {w.WindSpeedKmh:F0}km/h";
+        // 高德源:原样风级+风向;真实风速(Open-Meteo)有值才在副行显示,缺省不显示 km/h
+        txtWind.Text = w.WindLabel;
+        if (w.WindSpeedKmh is { } ws && ws > 0)
+        {
+            txtWindSpeed.Text = $"{ws:F0}km/h";
+            txtWindSpeed.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            txtWindSpeed.Visibility = Visibility.Collapsed;
+        }
         txtUv.Text = $"{w.UvIndex:F0} {w.UvLevel}";
         if (w.Aqi is { } aqi)
         {
@@ -915,7 +930,8 @@ public partial class MainWindow : Window
         var c = Config.Current;
         bool plan = c.ShowCodingPlan && _codingPlan.AnyVisible;
         bool lms = c.ShowLmStudio;
-        if (!plan && !lms)
+        bool str = c.ShowStrata;
+        if (!plan && !lms && !str)
         {
             cardCodingPlan.Visibility = Visibility.Collapsed;
             UpdateLandscapeSpans();
@@ -923,7 +939,12 @@ public partial class MainWindow : Window
         }
         cardCodingPlan.Visibility = Visibility.Visible;
         UpdateLandscapeSpans();
-        txtPlanTitle.Text = plan && lms ? "CODING PLAN · LM STUDIO" : plan ? "CODING PLAN" : "LM STUDIO";
+        // 标题 = 本卡启用的条目.list,多条目之间用「·」串起(如 CODING PLAN · LM STUDIO · STRATA)
+        var parts = new List<string>();
+        if (plan) parts.Add("CODING PLAN");
+        if (lms) parts.Add("LM STUDIO");
+        if (str) parts.Add("STRATA");
+        txtPlanTitle.Text = string.Join(" · ", parts);
 
         if (!plan)
         {
@@ -944,16 +965,16 @@ public partial class MainWindow : Window
 
         planRows.Children.Clear();
         bool compact = _orientation == PanelOrientation.Landscape;
-        // 横屏 + LM Studio 条:每个供应商只保留最紧张窗口的图例,给底部 LM Studio 条让出可视高度
-        bool legendTightestOnly = compact && Config.Current.ShowLmStudio;
+        // 横屏 + LM Studio/Strata 条:每个供应商只保留最紧张窗口的图例,给底部监控条让出可视高度
+        bool legendTightestOnly = compact && (lms || str);
         var sections = _codingPlan.Current
             .Select(p => compact ? BuildCompactPlanSection(p, legendTightestOnly) : (FrameworkElement)BuildPlanSection(p))
             .ToList();
 
-        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 5 家后图例文本靠截断收窄
+        // 横屏:所有供应商横排一行(UniformGrid 等宽),圆环同一高度并排对齐;上限 6 家后图例文本靠截断收窄
         if (compact && sections.Count > 1)
         {
-            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 5) };
+            var grid = new UniformGrid { Columns = Math.Min(sections.Count, 6) };
             foreach (var s in sections)
                 grid.Children.Add(s);
             planRows.Children.Add(grid);
@@ -1317,6 +1338,97 @@ public partial class MainWindow : Window
             Foreground = BrushFromHex(hex),
             FontWeight = weight,
         });
+
+    // ---------- Strata 本地推理 ----------
+
+    private async Task StrataLoopAsync()
+    {
+        // 启动稍等,避免与天气定位/LHM 初始化抢带宽
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        while (true)
+        {
+            try { await _strata.PollAsync(); } catch { /* 单次轮询失败不终止面板 */ }
+            if (IsLoaded) await Dispatcher.InvokeAsync(UpdateStrataCard);
+            await Task.Delay(StrataService.PollInterval);
+        }
+    }
+
+    /// <summary>设置里切显隐/改端口/改密钥后立即重画(卡片可见性与标题在 UpdateCodingPlan 里统一决定)。</summary>
+    public void RefreshStrataCard()
+    {
+        UpdateCodingPlan();
+        UpdateStrataCard();
+    }
+
+    private void UpdateStrataCard()
+    {
+        if (!Config.Current.ShowStrata)
+        {
+            rowStrata.Visibility = Visibility.Collapsed;
+            return;
+        }
+        rowStrata.Visibility = Visibility.Visible;
+        var s = _strata.Current;
+
+        // 状态点:密钥无效红、在线绿(与 LM Studio 条同一语义)、离线灰
+        dotStrata.Fill = s.Online
+            ? (s.AuthOk ? CachedBrush(0x34, 0xD3, 0x99) : CachedBrush(0xF8, 0x71, 0x71))
+            : CachedBrush(0x55, 0x64, 0x8A);
+        txtStrataQueue.Text = s.Queued > 0 ? $"排队 {s.Queued}" : "";
+
+        string state;
+        if (!s.Online) state = "服务未运行";
+        else if (!s.AuthOk) state = "密钥无效";
+        else if (s.Busy) state = "推理中";
+        else if (s.Loaded) state = "空闲";
+        else state = "未加载模型";
+        txtStrataState.Text = state;
+
+        // 横屏:模型名放标题行(与额度图例抢高度,速度行保持单行);竖屏:模型名并入速度行
+        bool compactLand = _orientation == PanelOrientation.Landscape;
+        string modelLabel = s.ModelId ?? "";
+        txtStrataModel.Visibility = compactLand && modelLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        txtStrataModel.Text = modelLabel;
+
+        txtStrataSpeed.Inlines.Clear();
+        if (!s.Online)
+        {
+            AddLmsRun(txtStrataSpeed, $"引擎未在运行(端口 {Config.Current.StrataPort}),在 Strata 加载模型后自动显示",
+                "#55648A", FontWeights.Normal);
+            return;
+        }
+        if (!s.AuthOk)
+        {
+            AddLmsRun(txtStrataSpeed, "服务要求密钥(401):设置里填入 Strata 引擎 API Key",
+                "#F87171", FontWeights.Normal);
+            return;
+        }
+
+        if (!compactLand && modelLabel.Length > 0)
+            AddLmsRun(txtStrataSpeed, modelLabel + "  ", "#C9D6EE", FontWeights.Bold);
+
+        // decode:推理中是 tokens_per_s_mean 实时滚动平均;空闲回落到上次请求的显式值
+        double? decodeTps = s.Busy && s.LiveDecode is not null ? s.LiveDecode : s.LastDecode;
+        if (s.Busy || s.LastPrefill is not null || s.LastDecode is not null)
+        {
+            if (!s.Busy && s.LastPrefill is { } pf)
+                AddLmsRun(txtStrataSpeed, "上次 ", "#55648A", FontWeights.Normal);
+            AddLmsSpeed(txtStrataSpeed, "prefill", s.LastPrefill, "F0");
+            AddLmsRun(txtStrataSpeed, " · ", "#55648A", FontWeights.Normal);
+            AddLmsSpeed(txtStrataSpeed, "decode", decodeTps, "F1");
+            if (!s.Busy) return;
+            AddLmsRun(txtStrataSpeed, " ·实时", "#55648A", FontWeights.Normal);
+            if (s.HitRate is { } hit) AddLmsRun(txtStrataSpeed, $"{hit:P0}", "#22D3EE", FontWeights.Bold);
+        }
+        else if (s.Loaded)
+        {
+            AddLmsRun(txtStrataSpeed, "已加载,上次请求速度待首次调用", "#55648A", FontWeights.Normal);
+        }
+        else
+        {
+            AddLmsRun(txtStrataSpeed, "在 Strata 桌面端加载模型后自动显示", "#55648A", FontWeights.Normal);
+        }
+    }
 
     // ---------- 便签 / 待办 / 专注提醒 ----------
 
