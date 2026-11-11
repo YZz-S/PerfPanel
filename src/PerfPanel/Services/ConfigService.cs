@@ -20,6 +20,8 @@ public sealed class AppConfig
     public double BackgroundOpacity { get; set; } = 0.45; // 背景图不透明度 0~1
     public double CardOpacity { get; set; } = 1.0;        // 卡片不透明度 0~1(1 = 不透明;调低可透出背景图)
     public string AmapKey { get; set; } = "";         // 高德 Web服务 Key;空 = Open-Meteo 免费源
+    public string QWeatherHost { get; set; } = "";    // 和风天气开发者专属 API Host(如 abcxyz.qweatherapi.com;控制台首页复制)
+    public string QWeatherKey { get; set; } = "";     // 和风 API KEY 凭据(X-QW-Api-Key 头;两项齐填才启用,污染/紫外线/风速走国内实况口径)
 
     // ---- Coding Plan 额度 ----
     public bool ShowCodingPlan { get; set; } = true;

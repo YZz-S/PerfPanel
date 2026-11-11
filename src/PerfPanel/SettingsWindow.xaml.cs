@@ -17,7 +17,7 @@ public partial class SettingsWindow : Window
     private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
     private SecretField _secAmap = null!, _secDs = null!, _secZp = null!,
                         _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!,
-                        _secOc = null!, _secCc = null!, _secStrata = null!;
+                        _secOc = null!, _secCc = null!, _secStrata = null!, _secQw = null!;
 
     public SettingsWindow(MainWindow main)
     {
@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
 
         var c = Config.Current;
         _secAmap = new SecretField(txtAmapKey, btnEyeAmap);
+        _secQw = new SecretField(txtQwKey, btnEyeQw);
         _secDs = new SecretField(txtDsKey, btnEyeDs);
         _secZp = new SecretField(txtZpKey, btnEyeZp);
         _secVolcAk = new SecretField(txtVolcAk, btnEyeVolcAk);
@@ -35,6 +36,8 @@ public partial class SettingsWindow : Window
         _secOc = new SecretField(txtOcKey, btnEyeOc);
         _secCc = new SecretField(txtCcKey, btnEyeCc);
         _secAmap.Init(c.AmapKey);
+        _secQw.Init(c.QWeatherKey);
+        txtQwHost.Text = c.QWeatherHost;
         _secDs.Init(c.DeepSeekKey);
         _secZp.Init(c.ZhipuKey);
         _secVolcAk.Init(c.VolcAk);
@@ -169,6 +172,46 @@ public partial class SettingsWindow : Window
                     test.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
             finally { btnSaveKey.IsEnabled = true; }
+        };
+
+        btnQwSave.Click += async (_, _) =>
+        {
+            var key = _secQw.Value.Trim();
+            var host = txtQwHost.Text.Trim();
+            if (key.Length == 0 && host.Length == 0)
+            {
+                Config.Current.QWeatherHost = "";
+                Config.Current.QWeatherKey = "";
+                Config.Save();
+                lblQwStatus.Text = "已关闭和风增强(污染/紫外线/风速走 Open-Meteo 估算)";
+                await _main.Weather.FetchAsync();
+                return;
+            }
+            if (key.Length == 0 || host.Length == 0)
+            {
+                // 弹框必须带 owner:主面板是 Topmost 全屏窗
+                MessageBox.Show(this, "API Host 与 Key 都需要填写;两项都清空 = 关闭和风增强", "PerfPanel",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            btnQwSave.IsEnabled = false;
+            try
+            {
+                lblQwStatus.Text = "正在测试和风配置…";
+                var test = await _main.Weather.TestQWeatherAsync(host, key);
+                if (test.Ok)
+                {
+                    Config.Current.QWeatherHost = host.TrimEnd('/');
+                    Config.Current.QWeatherKey = key;
+                    Config.Save();
+                    await _main.Weather.FetchAsync();
+                }
+                lblQwStatus.Text = test.Msg;
+                MessageBox.Show(this, test.Msg, "PerfPanel", MessageBoxButton.OK,
+                    test.Ok ? MessageBoxImage.Information : MessageBoxImage.Error);
+            }
+            finally { btnQwSave.IsEnabled = true; }
         };
 
         btnSetCity.Click += async (_, _) =>

@@ -32,15 +32,21 @@ public sealed record WeatherInfo(
     }
 }
 
-/// <summary>天气服务:双数据源。
-/// 有高德 Key → 高德实况+预报(国内稳定,地址级定位),UV/AQI 用 Open-Meteo 增强;
-/// 无 Key → Open-Meteo 免费链(IP 定位 ipapi→ipwho.is→反查中文名)。</summary>
+/// <summary>天气服务:三数据源。
+/// 填了和风天气(专属 API Host + API KEY) → 和风为主源:温度/天气现象/风级风向/湿度/UV/AQI 全国内口径,
+/// 高德只承担定位/地理编码;和风失败或未配置 → 有高德 Key 走高德实况+预报(UV/AQI/风速 Open-Meteo 增强);
+/// 都没有 → Open-Meteo 免费链(IP 定位 ipapi→ipwho.is→反查中文名)。增强项逐项容错回落。</summary>
 public sealed class WeatherService
 {
     private const double FallbackLat = 39.9042, FallbackLon = 116.4074; // 全部失败时的兜底:北京
     private const string FallbackAdcode = "110000";
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    // 和风服务端强制 gzip,必须开自动解压,否则读回乱码、JSON 解析全挂(Open-Meteo/高德不受影响)
+    private readonly HttpClient _http = new(new HttpClientHandler
+    {
+        AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
+    })
+    { Timeout = TimeSpan.FromSeconds(8) };
     private readonly string _configPath = Path.Combine(AppContext.BaseDirectory, "weather.json");
 
     /// <summary>下次刷新时间(UTC),UI 据此显示倒计时。</summary>
@@ -52,6 +58,9 @@ public sealed class WeatherService
     public static TimeSpan RefreshInterval => TimeSpan.FromMinutes(Math.Clamp(Config.Current.WeatherRefreshMinutes, 10, 120));
 
     private static bool HasAmap => !string.IsNullOrWhiteSpace(Config.Current.AmapKey);
+    private static bool HasQWeather =>
+        !string.IsNullOrWhiteSpace(Config.Current.QWeatherHost) &&
+        !string.IsNullOrWhiteSpace(Config.Current.QWeatherKey);
 
     // ==================== 主入口 ====================
 
@@ -60,7 +69,8 @@ public sealed class WeatherService
         WeatherInfo? fresh = null;
         try
         {
-            fresh = HasAmap ? await FetchAmapAsync() : await FetchOpenMeteoAsync();
+            fresh = (HasQWeather ? await FetchQWeatherMainAsync() : null)
+                 ?? (HasAmap ? await FetchAmapAsync() : await FetchOpenMeteoAsync());
         }
         catch { }
         if (fresh != null)
@@ -129,6 +139,33 @@ public sealed class WeatherService
                 return (true, "✓ Key 有效,已启用高德数据源");
             string why = root.TryGetProperty("info", out var info) ? info.GetString() ?? "" : "";
             return (false, $"✗ Key 校验失败:{(why.Length > 0 ? why : "未知错误")}");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"✗ 请求失败:{ex.Message}");
+        }
+    }
+
+    /// <summary>设置窗口保存和风配置时校验:先探实时天气(免费订阅必含)验 Key/Host,
+    /// 再探空气质量;免费订阅若无该 API 只提示降级,配置仍可保存(运行时逐项回落 Open-Meteo)。</summary>
+    public async Task<(bool Ok, string Msg)> TestQWeatherAsync(string host, string key)
+    {
+        try
+        {
+            if (key.Length == 0)
+                return (false, "✗ API Key 为空;API Host 与 Key 都需要填写");
+            host = host.Trim().TrimEnd('/');
+            if (host.Length == 0 || !host.Contains('.'))
+                return (false, "✗ API Host 无效:形如 abcxyz.qweatherapi.com(控制台首页复制)");
+
+            if (await QwGetAsync(key, host, "/weather/v1/current/39.90/116.41") is null)
+                return (false, "✗ Key/Host 校验失败:请确认凭据的身份认证方式是「API KEY」" +
+                               "(选成 JSON Web Token 则此 Key 无效)、Host 是否控制台首页复制");
+
+            return await QwGetAsync(key, host, "/airquality/v1/current/39.90/116.41") is { } aq &&
+                   QwCnAqi(aq) is { } aqi
+                ? (true, $"✓ 和风天气已启用\n北京测试点 AQI(中国标准) {aqi} {AqiLevel(aqi)}")
+                : (true, "✓ Key 有效:紫外线/风速走和风;空气质量取不到时自动回落 Open-Meteo");
         }
         catch (Exception ex)
         {
@@ -495,32 +532,52 @@ public sealed class WeatherService
 
     private async Task<(double uv, string uvLevel, int? aqi, string aqiLevel, double? windKmh)> FetchEnhancementsAsync(double lat, double lon)
     {
-        double uv = 0;
+        double? uv = null;
         string uvLevel = "—";
-        try
+        int? aqi = null;
+        string aqiLevel = "—";
+        double? wind = null;
+
+        // 和风优先(国内口径:站实况污染/今日最大 UV/实测风),任一项缺失再回落 Open-Meteo
+        if (HasQWeather && await FetchQWeatherEnhancementsAsync(lat, lon) is { } q)
         {
-            var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
-                      "&hourly=uv_index&forecast_hours=1&timezone=auto";
-            using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
-            uv = doc.RootElement.GetProperty("hourly").GetProperty("uv_index")[0].GetDouble();
-            uvLevel = UvLevel(uv);
+            uv = q.Uv;
+            aqi = q.Aqi;
+            wind = q.WindKmh;
         }
-        catch { }
+
+        if (uv == null)
+        {
+            try
+            {
+                var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
+                          "&hourly=uv_index&forecast_hours=1&timezone=auto";
+                using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
+                uv = doc.RootElement.GetProperty("hourly").GetProperty("uv_index")[0].GetDouble();
+            }
+            catch { }
+        }
+        if (uv is { } uvv && uvv >= 0)
+            uvLevel = UvLevel(uvv);
 
         // 真实 10m 风速,单独特容(高德源只有风级,不编 km/h)
-        double? wind = null;
-        try
+        if (wind == null)
         {
-            var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
-                      "&current=wind_speed_10m&timezone=auto";
-            using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
-            double v = doc.RootElement.GetProperty("current").GetProperty("wind_speed_10m").GetDouble();
-            if (v >= 0) wind = v;
+            try
+            {
+                var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
+                          "&current=wind_speed_10m&timezone=auto";
+                using var doc = JsonDocument.Parse(await _http.GetStringAsync(url));
+                double v = doc.RootElement.GetProperty("current").GetProperty("wind_speed_10m").GetDouble();
+                if (v >= 0) wind = v;
+            }
+            catch { }
         }
-        catch { }
 
-        var (aqi, aqiLevel) = await FetchAirQualityAsync(lat, lon);
-        return (uv, uvLevel, aqi, aqiLevel, wind);
+        if (aqi == null)
+            (aqi, aqiLevel) = await FetchAirQualityAsync(lat, lon);
+
+        return (uv ?? 0, uvLevel, aqi, aqiLevel, wind);
     }
 
     private async Task<(int? aqi, string level)> FetchAirQualityAsync(double lat, double lon)
@@ -587,6 +644,201 @@ public sealed class WeatherService
         return best; // 浓度全可用时为 0 的可能性仅限全部接近 0,正常不会触发
     }
 
+    // ==================== 和风天气(QWeather 新 API,国内口径) ====================
+    // 开发者专属 API Host(控制台首页,形如 abcxyz.qweatherapi.com)+ API KEY 凭据(X-QW-Api-Key 头)。
+    // 主源链 FetchQWeatherMainAsync:实时 /weather/v1/current + 逐日 /weather/v1/daily?days=1 +
+    // 空气 /airquality/v1/current,并行 3 请求 —— 温度/天气现象(condition.text)/风级风向/湿度(0-1→%)、
+    // 今日 UV(uvIndexMax,0-15)/AQI 全国内口径;实时失败整链回落高德/Open-Meteo,
+    // 逐日/空气失败仅丢对应项(高低温沿用当前温度、UV 用实时的 uvIndex、AQI 隐藏)。
+    // 增强链 FetchQWeatherEnhancementsAsync:高德/Open-Meteo 主源时只取 UV/AQI/风速三项,逐项回落。
+    // 空气质量 indexes[] 中中国标准项 code 含 "cn"(如 cn-mep;没有时按 pollutants[] 浓度用 HJ 633-2012 自算)。
+
+    private sealed record QwEnhancements(double? Uv, int? Aqi, double? WindKmh);
+
+    private async Task<WeatherInfo?> FetchQWeatherMainAsync()
+    {
+        try
+        {
+            var (lat, lon, city) = await ResolveLocationAsync();
+            string host = Config.Current.QWeatherHost.Trim().TrimEnd('/');
+            string key = Config.Current.QWeatherKey.Trim();
+            string la = lat.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            string lo = lon.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+            var nowTask = QwGetAsync(key, host, $"/weather/v1/current/{la}/{lo}");
+            var dailyTask = QwGetAsync(key, host, $"/weather/v1/daily/{la}/{lo}?days=1");
+            var aqTask = QwGetAsync(key, host, $"/airquality/v1/current/{la}/{lo}");
+            await Task.WhenAll(nowTask, dailyTask, aqTask);
+            if (nowTask.Result is not { } cur) return null;
+
+            string desc = cur.TryGetProperty("condition", out var cond) ? Str(cond, "text") : "";
+            double? temp = QwNestedNum(cur, "temperature");
+            if (desc.Length == 0 || temp == null) return null;   // 核心字段缺失 → 视为不可用,整链回落
+
+            int? humidity = cur.TryGetProperty("humidity", out var h) && h.ValueKind == JsonValueKind.Number
+                ? (int)Math.Round(h.GetDouble() * 100) : null;
+
+            string windLvlTxt = "", windDir = "";
+            double? windKmh = null;
+            if (cur.TryGetProperty("wind", out var w))
+            {
+                if (w.TryGetProperty("scale", out var sc) && sc.ValueKind == JsonValueKind.Number)
+                    windLvlTxt = ((int)Math.Round(sc.GetDouble())).ToString();   // 和风是确定风级,无「≤」形态
+                if (w.TryGetProperty("direction", out var dir) &&
+                    dir.TryGetProperty("degree", out var dg) && dg.ValueKind == JsonValueKind.Number)
+                    windDir = DegToCnDir(dg.GetDouble());
+                if (w.TryGetProperty("speed", out var sp) && sp.TryGetProperty("value", out var sv) &&
+                    sv.ValueKind == JsonValueKind.Number && sv.GetDouble() >= 0)
+                    windKmh = sv.GetDouble() * 3.6;              // 和风风速单位 m/s → 面板 km/h
+            }
+
+            double? uv = null;
+            string uvLevel = "—";
+            double tmax = temp.Value, tmin = temp.Value;
+            if (dailyTask.Result is { } d &&
+                d.TryGetProperty("daily", out var arr) && arr.ValueKind == JsonValueKind.Array &&
+                arr.GetArrayLength() > 0)
+            {
+                var day = arr[0];
+                tmax = QwNestedNum(day, "temperatureMax") ?? tmax;
+                tmin = QwNestedNum(day, "temperatureMin") ?? tmin;
+                if (day.TryGetProperty("uvIndexMax", out var uvm) && uvm.ValueKind == JsonValueKind.Number &&
+                    uvm.GetDouble() >= 0)
+                {
+                    uv = uvm.GetDouble();
+                    uvLevel = UvLevel(uv.Value);
+                }
+            }
+            if (uv == null && cur.TryGetProperty("uvIndex", out var cu) &&
+                cu.ValueKind == JsonValueKind.Number && cu.GetDouble() >= 0)
+            {
+                uv = cu.GetDouble();                             // 逐日缺 uvIndexMax 时用实时的当前值兜底
+                uvLevel = UvLevel(uv.Value);
+            }
+
+            int? aqi = null;
+            string aqiLevel = "—";
+            if (aqTask.Result is { } a)
+            {
+                aqi = QwCnAqi(a);
+                aqiLevel = aqi is { } v ? AqiLevel(v) : "—";
+            }
+
+            return new WeatherInfo(temp.Value, desc, tmax, tmin, city,
+                windLvlTxt, windDir, windKmh, uv ?? 0, uvLevel, aqi, aqiLevel, humidity);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<QwEnhancements?> FetchQWeatherEnhancementsAsync(double lat, double lon)
+    {
+        try
+        {
+            string host = Config.Current.QWeatherHost.Trim().TrimEnd('/');
+            string key = Config.Current.QWeatherKey.Trim();
+            string la = lat.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            string lo = lon.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+            var aqTask = QwGetAsync(key, host, $"/airquality/v1/current/{la}/{lo}");
+            var uvTask = QwGetAsync(key, host, $"/weather/v1/daily/{la}/{lo}?days=1");
+            var nowTask = QwGetAsync(key, host, $"/weather/v1/current/{la}/{lo}");
+            await Task.WhenAll(aqTask, uvTask, nowTask);
+
+            double? uv = uvTask.Result is { } d ? QwUvIndex(d) : null;
+            int? aqi = aqTask.Result is { } a ? QwCnAqi(a) : null;
+            double? wind = null;
+            if (nowTask.Result is { } cur &&
+                cur.TryGetProperty("wind", out var w) && w.TryGetProperty("speed", out var sp) &&
+                sp.TryGetProperty("value", out var sv) && sv.ValueKind == JsonValueKind.Number &&
+                sv.GetDouble() >= 0)
+                wind = sv.GetDouble() * 3.6;             // 和风新 API 风速单位 m/s → 面板 km/h
+
+            if (uv == null && aqi == null && wind == null) return null;
+            return new QwEnhancements(uv, aqi, wind);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>GET 和风新 API:X-QW-Api-Key 头;非 2xx、信封 code≠"200" 或解析失败一律返回 null
+    /// (增强项失败静默,与 Open-Meteo 增强同一容错风格)。</summary>
+    private async Task<JsonElement?> QwGetAsync(string key, string host, string pathAndQuery)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://{host}{pathAndQuery}");
+            req.Headers.TryAddWithoutValidation("X-QW-Api-Key", key);
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement.Clone();
+            string code = Str(root, "code");
+            if (code.Length > 0 && code != "200") return null;
+            return root;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>daily[0].uvIndexMax(今日最大紫外线,0-15);缺失/非数字返回 null。</summary>
+    private static double? QwUvIndex(JsonElement root)
+    {
+        if (root.TryGetProperty("daily", out var d) && d.ValueKind == JsonValueKind.Array && d.GetArrayLength() > 0 &&
+            d[0].TryGetProperty("uvIndexMax", out var u) && u.ValueKind == JsonValueKind.Number)
+        {
+            double v = u.GetDouble();
+            if (v >= 0) return v;
+        }
+        return null;
+    }
+
+    /// <summary>indexes[] 里取中国标准 AQI(code 含 "cn" 的项);没有则按 pollutants[] 浓度
+    /// 用 HJ 633-2012 自算(CO 单位 μg/m³,CnAqi 内部换算 mg/m³)。</summary>
+    private static int? QwCnAqi(JsonElement root)
+    {
+        if (root.TryGetProperty("indexes", out var idx) && idx.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var it in idx.EnumerateArray())
+            {
+                string code = Str(it, "code");
+                if (!code.ToLowerInvariant().Contains("cn")) continue;
+                if (it.TryGetProperty("aqi", out var v) && v.ValueKind == JsonValueKind.Number)
+                    return (int)Math.Round(v.GetDouble());
+            }
+        }
+        if (root.TryGetProperty("pollutants", out var pol) && pol.ValueKind == JsonValueKind.Array)
+        {
+            double? pm25 = null, pm10 = null, o3 = null, no2 = null, co = null, so2 = null;
+            foreach (var it in pol.EnumerateArray())
+            {
+                double? val = it.TryGetProperty("concentration", out var c) &&
+                              c.TryGetProperty("value", out var cv) && cv.ValueKind == JsonValueKind.Number
+                    ? cv.GetDouble() : null;
+                if (val is not { } x) continue;
+                switch (Str(it, "code").ToLowerInvariant())
+                {
+                    case "pm2p5" or "pm25": pm25 = x; break;
+                    case "pm10": pm10 = x; break;
+                    case "o3": o3 = x; break;
+                    case "no2": no2 = x; break;
+                    case "co": co = x; break;
+                    case "so2": so2 = x; break;
+                }
+            }
+            if (pm25 != null || pm10 != null || o3 != null || no2 != null || co != null || so2 != null)
+                return CnAqi(pm25, pm10, o3, no2, co, so2);
+        }
+        return null;
+    }
+
     // ==================== 缓存与工具 ====================
 
     private async Task WriteCacheAsync(double lat, double lon, string city, string? adcode)
@@ -618,6 +870,11 @@ public sealed class WeatherService
             return false;
         }
     }
+
+    /// <summary>obj.{container}.value 的数值(和风新 API 度量字段统一为 {value,unit} 形态)。</summary>
+    private static double? QwNestedNum(JsonElement obj, string container) =>
+        obj.TryGetProperty(container, out var c) && c.TryGetProperty("value", out var v) &&
+        v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
 
     private static string Str(JsonElement obj, string prop)
     {
