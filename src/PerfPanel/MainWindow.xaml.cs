@@ -454,6 +454,7 @@ public partial class MainWindow : Window
         txtGpuName.MaxWidth = 240;
         txtNoteText.FontSize = 15;
         txtNotesReminder.FontSize = 12;
+        txtNotesHint.Visibility = Visibility.Visible;
         MoveTo(notesMainCol, gridPomodoro, 1);      // 竖屏窄:番茄钟堆叠回 便签 与 待办 之间
         gridPomodoro.Margin = new Thickness(0, 10, 0, 0);
         ringPomo.Width = ringPomo.Height = 92;
@@ -508,12 +509,27 @@ public partial class MainWindow : Window
         cardGpu.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landMemCell, cardMemory);
         cardMemory.Margin = new Thickness(0, 0, 12, 12);
-        MoveTo(landNetCell, cardNetwork);
-        cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landDiskCell, cardStorage);          // 右上:磁盘卡(轻内容居上,天气让到下排)
+        cardStorage.Margin = new Thickness(0, 0, 12, 12);
         MoveTo(landNotesCell, cardNotes);
         cardNotes.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landWxCell, cardWeather);            // 天气移底排:与 FOCUS/网络同排,右列留给磁盘/额度
+        cardWeather.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landNetCell, cardNetwork);
+        cardNetwork.Margin = new Thickness(0, 0, 12, 0);
+        MoveTo(landPlanCell, cardCodingPlan);
+        cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
         MoveTo(notesPomoCell, gridPomodoro);        // 横屏宽:番茄钟移到右列,与左列便签/待办并排
         gridPomodoro.Margin = new Thickness(14, 0, 0, 0);
+
+        // FOCUS 让出半列后的紧凑字号(ArrangePortrait 还原)
+        txtNoteText.FontSize = 15.5;
+        _todoFontSize = 13;
+        txtNotesReminder.FontSize = 11;
+        txtNotesHint.Visibility = Visibility.Collapsed;
+        ringPomo.Width = ringPomo.Height = 78;
+        txtPomoPhase.FontSize = 13;
+        txtPomoHint.FontSize = 11;
 
         // 天气/额度占右列上下两格,空缺时另一半纵跨两行
         UpdateLandscapeSpans();
@@ -574,35 +590,25 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>横版右列:天气/额度按可见性占格,某卡片隐藏时另一半纵跨两行;便签卡挂左下大格。竖版无格位概念,直接跳过。</summary>
+    /// <summary>横版同列对占位:右列 STORAGE(上)/额度(下),中列 GPU 磁贴(上)/天气(下)——
+    /// 某一方隐藏时另一方纵跨两行补位。竖版无格位概念,直接跳过。</summary>
     private void UpdateLandscapeSpans()
     {
         if (_orientation != PanelOrientation.Landscape) return;
-        bool wx = cardWeather.Visibility == Visibility.Visible;
+        bool disk = cardStorage.Visibility == Visibility.Visible;
         bool plan = cardCodingPlan.Visibility == Visibility.Visible;
-        Grid.SetRowSpan(landWxCell, 1);
-        Grid.SetRowSpan(landPlanCell, 1);
-        if (wx && plan)
-        {
-            MoveTo(landWxCell, cardWeather);
-            cardWeather.Margin = new Thickness(0, 0, 12, 12);
-            MoveTo(landPlanCell, cardCodingPlan);
-            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
-        }
-        else if (wx)
-        {
-            MoveTo(landWxCell, cardWeather);
-            cardWeather.Margin = new Thickness(0, 0, 12, 0);
-            Grid.SetRowSpan(landWxCell, 2);
-        }
-        else if (plan)
-        {
-            MoveTo(landPlanCell, cardCodingPlan);
-            cardCodingPlan.Margin = new Thickness(0, 0, 12, 0);
-            Grid.SetRowSpan(landPlanCell, 2);
-        }
+        bool wx = cardWeather.Visibility == Visibility.Visible;
+        bool notes = cardNotes.Visibility == Visibility.Visible;
 
-        if (Config.Current.ShowNotes)
+        // 右列对:STORAGE / 额度
+        Grid.SetRowSpan(landDiskCell, disk && !plan ? 2 : 1);
+        Grid.SetRowSpan(landPlanCell, plan && !disk ? 2 : 1);
+        // 中列对:GPU 磁贴 / 天气(天气隐藏时 GPU 磁贴纵跨补位)
+        Grid.SetRowSpan(landWxCell, 1);
+        Grid.SetRowSpan(landGpuCell, wx ? 1 : 2);
+
+        // 底排左端 FOCUS:隐藏时该格空置(与既往行为一致)
+        if (notes)
             MoveTo(landNotesCell, cardNotes);
         else
             MoveTo(landNotesCell, null);
@@ -831,12 +837,13 @@ public partial class MainWindow : Window
     private void UpdateStorage(SensorSnapshot s)
     {
         var vols = s.DiskVolumes;
-        if (vols.Count == 0)
+        var target = vols.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (cardStorage.Visibility != target)
         {
-            cardStorage.Visibility = Visibility.Collapsed;
-            return;
+            cardStorage.Visibility = target;
+            UpdateLandscapeSpans();   // 右列 STORAGE/额度 跨行随显隐重算
         }
-        cardStorage.Visibility = Visibility.Visible;
+        if (target == Visibility.Collapsed) return;
         txtStorageNote.Text = vols.Count == 1 ? "1 个分区" : $"{vols.Count} 个分区";
 
         string sig = string.Join("|", vols.Select(v => $"{v.Label}:{v.TotalGb:F0}"));
@@ -1565,6 +1572,7 @@ public partial class MainWindow : Window
     {
         RebuildTodoRows();
         UpdateNotesCard(DateTime.Now);
+        UpdateLandscapeSpans();
     }
 
     /// <summary>每秒刷新:提醒周期到点触发轮换提醒,平时显示倒计时。

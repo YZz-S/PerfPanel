@@ -505,13 +505,13 @@
                     <StackPanel x:Name="landClockCell" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- 卡片区:上排 CPU/GPU/内存 紧凑磁贴 + 天气;下排 便签大卡片(跨两列) | 网络 | 额度 -->
+                <!-- 卡片区:上排 CPU/GPU/内存 紧凑磁贴 + STORAGE;下排 FOCUS | 天气 | 网络 | 额度 -->
                 <Grid Grid.Row="1" Margin="16,6,16,8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="27*"/>
-                        <ColumnDefinition Width="27*"/>
-                        <ColumnDefinition Width="17*"/>
-                        <ColumnDefinition Width="29*"/>
+                        <ColumnDefinition Width="25*"/>
+                        <ColumnDefinition Width="25*"/>
+                        <ColumnDefinition Width="20*"/>
+                        <ColumnDefinition Width="30*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="40*"/>
@@ -524,13 +524,15 @@
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     <ContentControl x:Name="landMemCell" Grid.Column="2" Grid.Row="0"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landDiskCell" Grid.Column="3" Grid.Row="0"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landNotesCell" Grid.Column="0" Grid.Row="1"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                    <ContentControl x:Name="landWxCell" Grid.Column="1" Grid.Row="1"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     <ContentControl x:Name="landNetCell" Grid.Column="2" Grid.Row="1"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
-                    <ContentControl x:Name="landWxCell" Grid.Column="3" Grid.Row="0"
-                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     <ContentControl x:Name="landPlanCell" Grid.Column="3" Grid.Row="1"
-                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
-                    <ContentControl x:Name="landNotesCell" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                 </Grid>
 
