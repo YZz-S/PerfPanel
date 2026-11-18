@@ -409,7 +409,7 @@
                                 <Button x:Name="btnEyeStrata" Style="{StaticResource EyeBtnStyle}" Content="👁"
                                         HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
                             </Grid>
-                            <TextBlock Text="数据取自引擎本机 API:http://127.0.0.1:{端口} 的 /health(免鉴权)与 /status、/metrics(2 秒刷新),需要 Strata 引擎跑起来(桌面端加载模型即启动);端口默认 8080(桌面端预设),注意设置里 Web UI 的端口是另一套代理、不含这些监控端点。引擎若设置了 API Key,须在此粘贴(strata launch --show-key 可查),否则查询一律 401。"
+                            <TextBlock Text="数据取自引擎本机 API 的 /health(免鉴权)与 /status、/metrics(2 秒刷新),需 Strata 引擎跑起来(桌面端加载模型即启动)。桌面端启动的引擎走动态端口(18500 起)且每次启动换 API Key,面板会自动发现;此处填的端口/Key 仅在填对时优先使用,留空即全自动。注意 Web UI 的端口是另一套代理、不含这些监控端点。"
                                        FontSize="11" Foreground="#55648A" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>

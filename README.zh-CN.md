@@ -145,10 +145,10 @@ PerfPanel.exe --set-city 上海
 
 额度卡底部的 `STRATA` 条(2 秒刷新;开关 / 端口 / 密钥在 设置 →「Coding Plan 额度」→ Strata 本地推理)。数据全部来自 Strata 引擎的本机 HTTP API,不读日志:
 
-- **在线判定**:TCP 探测引擎端口(默认 `8080`,桌面端预设固定此端口)。引擎只在加载模型后监听,卸载模型 / 引擎退出即「服务未运行」——注意桌面端 Web UI 的端口(如 `47831`)是另一套 SPA 代理,不提供 `/health` 等监控端点,别填它
+- **在线判定**:优先 TCP 探测设置里的端口,不通则**自动发现**引擎真实端点。Strata 桌面端拉起的引擎走**动态端口**(18500 / 18501)且**每次启动重新生成 API Key**(写在 `~/.strata/data/native-instances/*.json` 的 `api_key`),所以写死「端口 + 手填 Key」必然会过期、表现成面板永远「服务未运行」。自动发现做法:读 `%LOCALAPPDATA%\Strata\runtime\*.ready.json`,取最新且 `pid` 进程仍存活的那份拿 `bound_port`,再按端口匹配 `native-instances` 里最近写入的 `api_key`(结果缓存 20 秒)。手动端口/Key 仍然优先,填对时照旧生效——注意桌面端 Web UI 的端口(如 `47831`)是另一套 SPA 代理,不提供 `/health` 等监控端点,别填它
 - **加载态**:引擎 `/health` 免鉴权,返回 `loaded` 与模型名;未加载时显示「未加载模型」
-- **速度**:`/status` 给推理中的滚动平均 decode 速度(`tokens_per_s_mean`,显示为「·实时」)与排队请求数;`/metrics` 的 `last_timings` 给「上次请求」的 prefill(`prompt_per_second`)与 decode(`predicted_per_second`)——引擎空闲时显示的正是这组显式值;有投机解码统计(`drafts_accepted/offered`)时附带命中率
-- **密钥**:引擎设置了 API Key 时 `/status`、`/metrics` 一律要求 Bearer(`/health` 不拦):在设置里粘贴(打码显示;面板带 `Authorization: Bearer` 头;`strata launch --show-key` 可查),不匹配时状态点变红、提示「密钥无效」
+- **速度**:`/status` 给推理中的滚动平均 decode 速度(`tokens_per_s_mean`,显示为「·实时」)与排队请求数;「上次请求」的 prefill·decode 取 `/metrics` 里 `requests[]` 中 `time` 最大(最近完成)的一条——`prefill = prompt_tokens ÷ prompt_ms/1000`、`decode = decode_tok_s`(0.1.4x 及更早的顶层 `last_timings.prompt_per_second / predicted_per_second` 仍作回落);该条请求的 `drafts_accepted/offered` 给投机解码命中率
+- **密钥**:引擎设置了 API Key 时 `/status`、`/metrics` 一律要求 Bearer(`/health` 不拦)。自动发现到的实例 Key 会直接参与鉴权,配置里的 Key 只在端口手填且匹配时才用;配错 Key 时面板会自动改用实例 Key,仍失败才把状态点变红、提示「密钥无效」
 
 显示状态:服务未运行 / 未加载模型 / 空闲 / 推理中(右侧 `排队 N` 为排队请求数)/ 密钥无效。配色与语义沿用 LM Studio 条(prefill 琥珀、decode 青、离线灰点)。引擎没在运行时该条只显示提示文本,不产生任何请求。
 

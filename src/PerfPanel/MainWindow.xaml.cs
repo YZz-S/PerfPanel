@@ -1554,6 +1554,7 @@ public partial class MainWindow : Window
         else if (s.Loaded) state = "空闲";
         else state = "未加载模型";
         txtStrataState.Text = state;
+        txtStrataState.ToolTip = s.Online ? $"引擎端口 {s.Port}" + (s.AutoPort ? "(自动发现)" : "") : null;
 
         // 横屏:模型名放标题行(与额度图例抢高度,速度行保持单行);竖屏:模型名并入速度行
         bool compactLand = _orientation == PanelOrientation.Landscape;
@@ -1564,7 +1565,8 @@ public partial class MainWindow : Window
         txtStrataSpeed.Inlines.Clear();
         if (!s.Online)
         {
-            AddLmsRun(txtStrataSpeed, $"引擎未在运行(端口 {Config.Current.StrataPort}),在 Strata 加载模型后自动显示",
+            // 自动发现失败才是真没跑:桌面端引擎走动态端口(18500 起),不能报死配置端口误导
+            AddLmsRun(txtStrataSpeed, "引擎未在运行:在 Strata 桌面端加载模型后自动显示(端口自动发现)",
                 "#55648A", FontWeights.Normal);
             return;
         }

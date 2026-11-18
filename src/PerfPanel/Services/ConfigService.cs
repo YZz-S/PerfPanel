@@ -42,7 +42,7 @@ public sealed class AppConfig
 
     // ---- Strata 本地推理 ----
     public bool ShowStrata { get; set; } = true;      // Strata 监控条(加载态/队列/prefill·decode 速度)
-    public int StrataPort { get; set; } = 8080;       // 引擎 API 端口(桌面端预设默认 8080;Web UI 的 47831 是另一套代理,不暴露这些端点)
+    public int StrataPort { get; set; } = 8080;       // 引擎 API 端口(桌面端实为动态端口 18500 起;此处探测不通时自动发现,见 StrataService)
     public string StrataApiKey { get; set; } = "";    // 引擎 API Key(`strata launch --show-key` 可查;空 = 服务未设密钥)
 
     // ---- 便签 / 待办 ----
