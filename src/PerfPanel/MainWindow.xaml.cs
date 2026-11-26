@@ -1211,6 +1211,15 @@ public partial class MainWindow : Window
         var percentWindows = p.Windows.Where(w => w.UsedPercent is not null).ToList();
         foreach (var w in percentWindows)
             panel.Children.Add(BuildPlanWindowRow(w));
+        // 付费额度（额外充值/赠送）没有百分比，单独一行；不显示会让人以为钱不见了
+        foreach (var abs in p.Windows.Where(w => w.UsedPercent is null && w.RemainingValue is not null))
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"{abs.Label} {FormatPlanValue(abs, p.Unit)}",
+                FontSize = 12.5, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
+                Foreground = BrushFromHex("#22D3EE"), HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 4, 0, 0),
+            });
         return panel;
     }
 
@@ -1276,11 +1285,11 @@ public partial class MainWindow : Window
         cell.Children.Add(ring);
         cell.Children.Add(nameLine);
 
-        // 绝对值窗口(如 MiMo 按量付费余额)与百分比环并存时,余额单独一行展示
+        // 绝对值窗口（如 MiMo 按量付费余额、CommandCode 充值额度）与百分比环并存时，单独一行展示
         foreach (var abs in p.Windows.Where(w => w.UsedPercent is null && w.RemainingValue is not null))
             cell.Children.Add(new TextBlock
             {
-                Text = "余额 " + FormatPlanValue(abs, p.Unit),
+                Text = $"{abs.Label} {FormatPlanValue(abs, p.Unit)}",
                 FontSize = 12.5, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas"),
                 Foreground = BrushFromHex("#22D3EE"), HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,

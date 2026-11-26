@@ -519,7 +519,7 @@ public sealed class CodingPlanService
     //   3 GET /alpha/billing/subscriptions?orgId=       → data.{planId,currentPeriodStart,currentPeriodEnd}
     //   4 GET /alpha/usage/summary?since={periodStart}&orgId= → totalCost(当前周期已花费,美元)
     // 口径同 cc-switch:5h/周 utilization = used/cap(limited=false 的纯按量无滚动窗口);
-    // 月 utilization = totalCost ÷ (totalCost + 三池剩余之和)(credits 池是剩余,不参与滚动窗口,只算月度);
+    // 月 utilization = 套餐已花 ÷ (套餐已花 + monthly 剩余) —— credits 池是剩余,套餐与付费额度分开算;
     // resetAt 兼容 ISO/秒/毫秒时间戳。
 
     private const string CommandCodeApiBase = "https://api.commandcode.ai";
@@ -614,16 +614,23 @@ public sealed class CodingPlanService
         }
     }
 
-    /// <summary>解析 credits + summary:窗口顺序为余额(剩余池,标题主值) → 5h/周(limited≠false 且 cap>0) → 月。
+    /// <summary>解析 credits + summary:窗口顺序为月(套餐总额,标题主值) → 5h → 周 → 付费(有充值时)。
+    /// 套餐额度(monthly)与付费额度(purchased/free)分开统计:两者池子不同,混算会互相稀释。
     /// 多余字段只取认识的部分(宽松解析,防 /alpha 字段增减);credits 池取值口径与 cc-switch 一致。</summary>
     internal static PlanStatus ParseCommandCodeUsage(
         JsonElement creditsRoot, JsonElement summaryRoot, string planId, DateTime? periodEnd)
     {
         var credit = creditsRoot.TryGetProperty("credits", out var cr) && cr.ValueKind == JsonValueKind.Object
             ? cr : creditsRoot;
-        double pool = Math.Max(0, ParseD(credit, "monthlyCredits"))
-                    + Math.Max(0, ParseD(credit, "purchasedCredits"))
-                    + Math.Max(0, ParseD(credit, "freeCredits"));
+
+        // ── 剩余池按来源拆开:套餐额度 vs 付费额度(购买 + 赠送)
+        //    monthlyCredits  = 订阅每月发放,周期结束作废 → 属于「套餐」
+        //    purchasedCredits= 用户额外充值,不随周期清零   → 属于「付费」
+        //    freeCredits     = 赠送/补偿,口径同充值       → 归入「付费」
+        double monthlyRemain = Math.Max(0, ParseD(credit, "monthlyCredits"));
+        double paidRemain = Math.Max(0, ParseD(credit, "purchasedCredits"))
+                          + Math.Max(0, ParseD(credit, "freeCredits"));
+        double pool = monthlyRemain + paidRemain;
         if (planId.Length == 0) planId = CcPathStr(credit, "planId");
 
         // windowLimits 实测在 credits 同级;兼容嵌在 credits 层下两种形态
@@ -634,6 +641,14 @@ public sealed class CodingPlanService
         if (!summaryRoot.TryGetProperty("totalCost", out var tc))
             return Err("CommandCode", "usage/summary 响应缺少 totalCost 字段(字段口径可能有变)");
         double spent = ParseD2(tc);
+        // 套餐池已花:summary 回传 totalMonthlyCredits(实测与 totalCost 相等);
+        // 缺失时退回「按剩余占比摊销」的近似,避免老响应算错
+        double monthlySpent = summaryRoot.TryGetProperty("totalMonthlyCredits", out var tms) ? ParseD2(tms) : double.NaN;
+        if (double.IsNaN(monthlySpent))
+        {
+            double totalRemain = pool > 0 ? pool : 1;
+            monthlySpent = spent * (monthlyRemain / totalRemain);
+        }
 
         var windows = new List<QuotaWindow>();
         // limited=false 明确是纯按量(如 Provider 套餐,无滚动窗口);字段缺失或 true 时按窗口节点存在性解析
@@ -653,24 +668,30 @@ public sealed class CodingPlanService
             }
         }
 
-        // 月度:三类 credits 之和是「剩余」而非总额,套餐总额 = 已花 + 剩余,重置点 = 订阅周期截止。
+        // 套餐月度:monthly 池是「剩余」而非总额,套餐总额 = 已花 + 剩余。
         // 直接 spent/剩余 会在周期后段虚高(实测 GOAT:37.88 已花 + 32.39 剩余 = 70.27 总额,
         // spent/剩余 = 117% 被 clamp 成 100%,还有 $32 余额却显示「剩 0%」)。
-        if (pool > 0)
+        if (monthlyRemain > 0 || monthlySpent > 0)
         {
-            double allotment = spent + pool;
-            windows.Add(new QuotaWindow("月", Math.Clamp(spent / allotment * 100.0, 0, 100), null, null, periodEnd));
+            double allotment = monthlySpent + monthlyRemain;
+            windows.Add(new QuotaWindow("月", Math.Clamp(monthlySpent / allotment * 100.0, 0, 100), null, null, periodEnd));
         }
 
-        if (windows.Count == 0)
+        // 付费额度:额外充值/赠送,不随套餐周期重置。单独成一档而不是并入「月」
+        // (买了 $30 会把套餐使用率稀释掉一大截),但仅作附加行,放在付费档之后。
+        var paidWindow = paidRemain > 0
+            ? new QuotaWindow("付费", null, paidRemain, null, null)
+            : null;
+
+        if (windows.Count == 0 && paidWindow is null)
             return Err("CommandCode", "credits 池为 0 且无滚动窗口(套餐可能未生效,检查 Studio › Billing)");
 
+        // 顺序:套餐总额(月)→ 5h/周 → 付费额度。付费放最后,避免 FirstOrDefault() 取到的
+        // 标题主值变成「付费余额」——用户关心的是套餐还剩多少,不是额外充了多少。
         string planName = CcPlanLabel(planId);
-        if (pool > 0)
-            return Ok("CommandCode",
-                new[] { new QuotaWindow("余额", null, pool, null, null) }.Concat(windows).ToList(),
-                planName, "USD");
-        return Ok("CommandCode", windows, planName, null);
+        var ordered = windows.OrderBy(w => w.Label == "月" ? 0 : w.Label == "5h" ? 1 : 2).ToList();
+        if (paidWindow is not null) ordered.Add(paidWindow);
+        return Ok("CommandCode", ordered, planName, "USD");
     }
 
     /// <summary>订阅/credits 返回的 planId → 面板显示名(未知原样显示)。</summary>
