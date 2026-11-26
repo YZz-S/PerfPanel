@@ -519,7 +519,8 @@ public sealed class CodingPlanService
     //   3 GET /alpha/billing/subscriptions?orgId=       → data.{planId,currentPeriodStart,currentPeriodEnd}
     //   4 GET /alpha/usage/summary?since={periodStart}&orgId= → totalCost(当前周期已花费,美元)
     // 口径同 cc-switch:5h/周 utilization = used/cap(limited=false 的纯按量无滚动窗口);
-    // 月 utilization = totalCost ÷ 三池之和(credits 池不参与滚动窗口,只算月度);resetAt 兼容 ISO/秒/毫秒时间戳。
+    // 月 utilization = totalCost ÷ (totalCost + 三池剩余之和)(credits 池是剩余,不参与滚动窗口,只算月度);
+    // resetAt 兼容 ISO/秒/毫秒时间戳。
 
     private const string CommandCodeApiBase = "https://api.commandcode.ai";
 
@@ -652,9 +653,14 @@ public sealed class CodingPlanService
             }
         }
 
-        // 月度:额度池 = 三类 credits 之和,已花 = totalCost,重置点 = 订阅周期截止
+        // 月度:三类 credits 之和是「剩余」而非总额,套餐总额 = 已花 + 剩余,重置点 = 订阅周期截止。
+        // 直接 spent/剩余 会在周期后段虚高(实测 GOAT:37.88 已花 + 32.39 剩余 = 70.27 总额,
+        // spent/剩余 = 117% 被 clamp 成 100%,还有 $32 余额却显示「剩 0%」)。
         if (pool > 0)
-            windows.Add(new QuotaWindow("月", Math.Clamp(spent / pool * 100.0, 0, 100), null, null, periodEnd));
+        {
+            double allotment = spent + pool;
+            windows.Add(new QuotaWindow("月", Math.Clamp(spent / allotment * 100.0, 0, 100), null, null, periodEnd));
+        }
 
         if (windows.Count == 0)
             return Err("CommandCode", "credits 池为 0 且无滚动窗口(套餐可能未生效,检查 Studio › Billing)");
