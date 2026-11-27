@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>PerfPanel</RootNamespace>
     <AssemblyName>PerfPanel</AssemblyName>
-    <Version>2026.11.11</Version>
+    <Version>2026.11.27</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

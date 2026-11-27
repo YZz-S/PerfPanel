@@ -32,3 +32,10 @@ cc-last-response.json
 dist/notes.json
 dist/tools/
 .diag/
+
+# 面板截图和日志
+dist/*.png
+dist/*.log
+
+# 宣传视频素材和成片
+out/*
