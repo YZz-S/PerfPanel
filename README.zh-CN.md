@@ -111,7 +111,7 @@ PerfPanel.exe --set-city 上海
 | DeepSeek | 官方接口 `/user/balance` | 账户余额(¥) |
 | 智谱 GLM Coding Plan | 非官方接口(同 CC Switch) | 5h 窗/周窗剩余百分比 + 重置倒计时 |
 | 火山方舟 Agent/Coding Plan | 非官方控制面 OpenAPI(同 CC Switch) | 5h/周/月窗剩余额度 + 重置倒计时 |
-| Xiaomi MiMo | 控制台 API(浏览器登录 Cookie,同 CodexBar) | 按量付费余额(¥)+ Token Plan 月额度已用百分比 + 周期截止倒计时 |
+| Xiaomi MiMo | 官方 API Key(`sk-` 余额端点 + `tp-` Token Plan 端点,免 Cookie) | 按量付费余额(¥)+ Token Plan 积分额度已用百分比(月付/年付) + 周期截止倒计时 |
 | OpenCode Go | API Key Bearer `GET zen/go/v1/usage`(同 CodexBar 实测端点) | 5h(滚动)/周/月用量百分比 + 重置倒计时;响应带美元限额时附剩余金额 |
 | CommandCode(GOAT 套餐) | 官方 CLI 的 `/alpha/whoami`/`billing/credits`/`billing/subscriptions`/`usage/summary` 私有路由(同 CC Switch) | 余额(monthly+purchased+freeCredits 剩余池,美元)+ 5h/周/月用量百分比 + 重置倒计时 |
 
@@ -120,17 +120,17 @@ PerfPanel.exe --set-city 上海
 - **DeepSeek**:填 [api.deepseek.com](https://platform.deepseek.com) 的 API Key
 - **智谱 GLM**:填 [open.bigmodel.cn](https://open.bigmodel.cn) 的 API Key(个人版;非 Coding Plan 专用的 GLM API Key 亦可查询)
 - **火山方舟**:填**火山引擎控制台 IAM 的 AccessKey ID + Secret Access Key**(即 [volcengine.com](https://www.volcengine.com) 控制台右上角头像 → API 访问密钥),**不是**推理用的 Ark API Key —— 火山用量查询走控制面 OpenAPI,需 AK/SK 签名,推理 Key 无法使用
-- **Xiaomi MiMo**:**粘贴整段控制台 Cookie**(`tp-`/`sk-` API Key 均查不了,只能用账号登录会话)—— 登录 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → F12 → Network → 刷新 → 点任意 `/api/v1` 请求 → Request Headers → 复制整行 Cookie(必须含 `api-platform_serviceToken` 与 `userId`);Cookie 过期后重新复制即可
+- **Xiaomi MiMo**:两个官方 API Key,**免 Cookie** —— 套餐与按量付费是两套独立系统,Key 前缀与端点互不通用(实测交叉:`sk-` 打套餐端点报 Invalid API key,`tp-` 打余额端点返回 401):`sk-` 开头的按量付费 Key([platform.xiaomimimo.com](https://platform.xiaomimimo.com) 控制台复制)查现金/赠送余额;`tp-` 开头的 Token Plan Key 查套餐积分额度(周期可月付可年付,统一显示「额度」档)。两个 Key 都填时面板合并为一个 MiMo 条目展示
 - **OpenCode Go**:填 [opencode.ai/console](https://opencode.ai/console) 的 API Key(`sk-` 开头;需已订阅 Go/Go Plus)
 - **CommandCode**:填 [commandcode.ai](https://commandcode.ai) → Studio › API Keys 创建的 Key(除 $1 的 Go 外各套餐均带 API 访问)。额度查询走官方 CLI 自己使用的 `/alpha/*` 路由(未公开文档;面板上的套餐名 GOAT/Pro/Max… 取自订阅 `planId`)
 
 各项均「保存并测试」即时验证;留空 = 面板不查询该项。密钥保存在 exe 旁 `config.json`。
 
-**密钥打码**:所有密钥/Cookie 输入框(高德 Key 亦然)默认以 `●●●●` 打码,且打码态可直接编辑——点进框输入即整体替换重输(新键入的字符也以 ● 显示)、退格删除尾字符、粘贴整体替换;点右侧 👁 图标临时显示明文以便查看或补改中间几位,失焦自动回打码。读取与保存的始终是真实明文,不影响「保存并测试」。
+**密钥打码**:所有密钥输入框(高德 Key 亦然)默认以 `●●●●` 打码,且打码态可直接编辑——点进框输入即整体替换重输(新键入的字符也以 ● 显示)、退格删除尾字符、粘贴整体替换;点右侧 👁 图标临时显示明文以便查看或补改中间几位,失焦自动回打码。读取与保存的始终是真实明文,不影响「保存并测试」。
 
 **设置窗自适应**:带 Owner 打开时原本会挤在面板所在的副屏(如 440×1920 竖屏)只剩 ~460px 宽,现在所在屏工作区小于最大屏六成时自动迁到**最大屏居中**;窗口可拖拽调大小,输入框与下拉在窄窗下自适应收窄(细滚动条,说明文字自动换行)。
 
-> 智谱/火山/MiMo 为非官方接口(参考 CC Switch / CodexBar 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。火山最近一次查询的原始响应会保存在 exe 旁 `volc-last-response.json`,字段缺失/变动时可据此核对。CommandCode 的 `/alpha/*` 是官方 CLI 未公开文档化的内部路由(字段口径照 CC Switch 实测),同样可能静默变动;各端点最新响应会落盘到 exe 旁 `cc-last-response.json` 供核对。
+> 智谱/火山为非官方接口(参考 CC Switch / CodexBar 实现),字段变动可能导致查询失败,失败时面板会显示错误原因。火山最近一次查询的原始响应会保存在 exe 旁 `volc-last-response.json`,字段缺失/变动时可据此核对。CommandCode 的 `/alpha/*` 是官方 CLI 未公开文档化的内部路由(字段口径照 CC Switch 实测),各端点最新响应会落盘到 exe 旁 `cc-last-response.json` 供核对;MiMo 的官方 API 端点同样未公开文档化,最近一次成功响应会落盘到 exe 旁 `mimo-last-response.json` 供核对。
 
 ## LM Studio 监控
 

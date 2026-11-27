@@ -16,8 +16,8 @@ public partial class SettingsWindow : Window
     private string[] _gpuNames = [];       // 下拉当前已填充的 GPU 列表(变化才重建,避免打断选择)
     private bool _suppressGpuEvent;        // 程序性 SelectedIndex 赋值不当作用户切换
     private SecretField _secAmap = null!, _secDs = null!, _secZp = null!,
-                        _secVolcAk = null!, _secVolcSk = null!, _secMimo = null!,
-                        _secOc = null!, _secCc = null!, _secStrata = null!, _secQw = null!;
+                        _secVolcAk = null!, _secVolcSk = null!, _secMimoSk = null!,
+                        _secMimoTp = null!, _secOc = null!, _secCc = null!, _secStrata = null!, _secQw = null!;
 
     public SettingsWindow(MainWindow main)
     {
@@ -32,7 +32,8 @@ public partial class SettingsWindow : Window
         _secZp = new SecretField(txtZpKey, btnEyeZp);
         _secVolcAk = new SecretField(txtVolcAk, btnEyeVolcAk);
         _secVolcSk = new SecretField(txtVolcSk, btnEyeVolcSk);
-        _secMimo = new SecretField(txtMimoCookie, btnEyeMimo);
+        _secMimoSk = new SecretField(txtMimoSk, btnEyeMimoSk);
+        _secMimoTp = new SecretField(txtMimoTp, btnEyeMimoTp);
         _secOc = new SecretField(txtOcKey, btnEyeOc);
         _secCc = new SecretField(txtCcKey, btnEyeCc);
         _secAmap.Init(c.AmapKey);
@@ -42,7 +43,8 @@ public partial class SettingsWindow : Window
         _secZp.Init(c.ZhipuKey);
         _secVolcAk.Init(c.VolcAk);
         _secVolcSk.Init(c.VolcSk);
-        _secMimo.Init(c.MimoCookie);
+        _secMimoSk.Init(c.MimoBalanceKey);
+        _secMimoTp.Init(c.MimoTokenPlanKey);
         _secOc.Init(c.OpenCodeKey);
         _secCc.Init(c.CommandCodeKey);
         txtCity.Text = c.City;
@@ -305,7 +307,8 @@ public partial class SettingsWindow : Window
         btnDsTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.DeepSeek);
         btnZpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Zhipu);
         btnVolcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Volc);
-        btnMimoTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.Mimo);
+        btnMimoSkTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.MimoBalance);
+        btnMimoTpTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.MimoTokenPlan);
         btnOcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.OpenCode);
         btnCcTest.Click += (_, _) => _ = SaveAndTestPlanAsync(PlanKind.CommandCode);
 
@@ -686,7 +689,7 @@ public partial class SettingsWindow : Window
         return dest;
     }
 
-    private enum PlanKind { DeepSeek, Zhipu, Volc, Mimo, OpenCode, CommandCode }
+    private enum PlanKind { DeepSeek, Zhipu, Volc, MimoBalance, MimoTokenPlan, OpenCode, CommandCode }
 
     /// <summary>保存密钥到 config.json 并即时查询一次;留空保存 = 清除该项(面板不再查询)。</summary>
     private async Task SaveAndTestPlanAsync(PlanKind kind)
@@ -698,7 +701,8 @@ public partial class SettingsWindow : Window
         {
             case PlanKind.DeepSeek: key = _secDs.Value.Trim(); c.DeepSeekKey = key; btn = btnDsTest; break;
             case PlanKind.Zhipu: key = _secZp.Value.Trim(); c.ZhipuKey = key; btn = btnZpTest; break;
-            case PlanKind.Mimo: key = _secMimo.Value.Trim(); c.MimoCookie = key; btn = btnMimoTest; break;
+            case PlanKind.MimoBalance: key = _secMimoSk.Value.Trim(); c.MimoBalanceKey = key; btn = btnMimoSkTest; break;
+            case PlanKind.MimoTokenPlan: key = _secMimoTp.Value.Trim(); c.MimoTokenPlanKey = key; btn = btnMimoTpTest; break;
             case PlanKind.OpenCode: key = _secOc.Value.Trim(); c.OpenCodeKey = key; btn = btnOcTest; break;
             case PlanKind.CommandCode: key = _secCc.Value.Trim(); c.CommandCodeKey = key; btn = btnCcTest; break;
             default: ak = _secVolcAk.Value.Trim(); sk = _secVolcSk.Value.Trim(); c.VolcAk = ak; c.VolcSk = sk; btn = btnVolcTest; break;
@@ -708,7 +712,6 @@ public partial class SettingsWindow : Window
         bool empty = kind switch
         {
             PlanKind.Volc => ak.Length == 0 || sk.Length == 0,
-            PlanKind.Mimo => key.Length == 0,
             _ => key.Length == 0,
         };
         if (empty)
@@ -726,7 +729,8 @@ public partial class SettingsWindow : Window
             {
                 PlanKind.DeepSeek => await _main.CodingPlan.QueryDeepSeekAsync(key),
                 PlanKind.Zhipu => await _main.CodingPlan.QueryZhipuAsync(key),
-                PlanKind.Mimo => await _main.CodingPlan.QueryMimoAsync(key),
+                PlanKind.MimoBalance => await _main.CodingPlan.QueryMimoBalanceAsync(key),
+                PlanKind.MimoTokenPlan => await _main.CodingPlan.QueryMimoTokenPlanAsync(key),
                 PlanKind.OpenCode => await _main.CodingPlan.QueryOpenCodeAsync(key),
                 PlanKind.CommandCode => await _main.CodingPlan.QueryCommandCodeAsync(key),
                 _ => await _main.CodingPlan.QueryVolcAsync(ak, sk),
